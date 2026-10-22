@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#080d17" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="CORE BREAK" />
+    <title>CORE BREAK</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="stylesheet" href="play.css" />
+  <script src="../../assets/audio-settings.js"></script>
+</head>
+  <body>
+    <main class="game-shell">
+      <header class="hud">
+        <button id="areas" class="icon" aria-label="ルールを選ぶ">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="3" y="3" width="6" height="6" rx="1" />
+            <rect x="15" y="3" width="6" height="6" rx="1" />
+            <rect x="3" y="15" width="6" height="6" rx="1" />
+            <rect x="15" y="15" width="6" height="6" rx="1" />
+          </svg>
+        </button>
+        <div class="identity">
+          <span class="brand">CORE BREAK</span><span id="stage-name"></span>
+        </div>
+        <div id="steps" aria-label="難易度"></div>
+        <button id="pause" class="icon" aria-label="一時停止">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M8 5v14M16 5v14" />
+          </svg>
+        </button>
+      </header>
+      <div class="playfield">
+        <canvas
+          id="world"
+          tabindex="0"
+          aria-label="数の塊をつかんで合体・分離し、敵に撃ち込む盤面"
+        ></canvas>
+        <div id="overlay" hidden></div>
+        <div
+          id="announcement"
+          class="sr-only"
+          role="status"
+          aria-live="polite"
+        ></div>
+        <div id="keyboard-controls" class="sr-only"></div>
+      </div>
+    </main>
+    <script type="module" src="src/bootstrap.mjs?v=2026.09.24.1"></script>
+
+</body>
+</html>

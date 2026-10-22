@@ -1,0 +1,19 @@
+name: Public math games checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node scripts/verify-number-games.mjs
+      - run: node --test tests/core-break/*.test.mjs
+      - run: node --check public/assets/app.js
+      - run: node --check public/assets/audio-settings.js

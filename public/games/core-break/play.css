@@ -1,0 +1,563 @@
+:root {
+  font-family:
+    ui-rounded, "Hiragino Kaku Gothic ProN", Meiryo, system-ui, sans-serif;
+  color: #e9efff;
+  background: #080d17;
+  --accent: #ffc977;
+  color-scheme: dark;
+}
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+body {
+  background: radial-gradient(ellipse at 50% 30%, #142336, #070c15 75%);
+}
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+button:disabled {
+  opacity: 0.4;
+}
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+a {
+  color: inherit;
+  text-decoration: none;
+}
+.game-shell {
+  height: 100dvh;
+  max-width: 880px;
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  border-inline: 1px solid #ffffff06;
+}
+.hud {
+  height: 66px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 22px;
+  border-bottom: 1px solid #ffffff0b;
+  background: #0b1320aa;
+}
+.icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid #53678344;
+  border-radius: 13px;
+  background: #16233466;
+}
+.icon:hover {
+  background: #243750;
+}
+.icon svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+}
+.identity {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1;
+  min-width: 0;
+}
+.brand {
+  font-size: 13px;
+  letter-spacing: 0.17em;
+  font-weight: 850;
+}
+.identity #stage-name {
+  font-size: 10px;
+  color: var(--accent);
+  letter-spacing: 0.09em;
+}
+#steps {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-right: 5px;
+}
+#steps i {
+  display: block;
+  width: 5px;
+  height: 5px;
+  background: #384b65;
+  border-radius: 50%;
+}
+#steps .done {
+  background: var(--accent);
+}
+#steps .current {
+  width: 16px;
+  border-radius: 5px;
+  background: var(--accent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+.playfield {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+#world {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+#world:active {
+  cursor: grabbing;
+}
+#overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  backdrop-filter: blur(13px);
+  background: #060c19bd;
+  z-index: 5;
+}
+#overlay[hidden] {
+  display: none;
+}
+.panel {
+  width: min(100%, 520px);
+  max-height: 100%;
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid #6380a33b;
+  background: linear-gradient(140deg, #17263bee, #0b1425f5);
+  border-radius: 26px;
+  box-shadow: 0 35px 100px #0007;
+  text-align: center;
+}
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 26px;
+}
+.panel-title {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+.area-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.area-tile {
+  border: 1px solid #758cab33;
+  background: #0b162580;
+  border-radius: 18px;
+  padding: 19px 12px;
+  color: var(--tile);
+}
+.area-tile:hover {
+  border-color: var(--tile);
+  background: #ffffff07;
+}
+.area-glyph {
+  height: 75px;
+  display: grid;
+  place-items: center;
+  font-size: 45px;
+}
+.area-glyph svg {
+  height: 72px;
+  width: 86px;
+  fill: var(--tile);
+}
+.area-title {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  margin: 10px 0 15px;
+}
+
+.panel-footer {
+  margin-top: 24px;
+  display: flex;
+  justify-content: center;
+  gap: 15px;
+}
+.pause-actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 15px;
+  padding: 22px 0;
+}
+.large-action {
+  width: 66px;
+  height: 66px;
+  display: grid;
+  place-items: center;
+  background: #1b2c42;
+  border: 1px solid #5c729055;
+  border-radius: 20px;
+  font-size: 29px;
+  color: #d2e2fa;
+}
+.large-action.primary {
+  background: var(--accent);
+  color: #0b1320;
+  border-color: var(--accent);
+  box-shadow: 0 0 35px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.restart-rule,
+.text-action {
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  color: #9bb2cb;
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.restart-rule:hover,
+.text-action:hover {
+  color: #fff;
+}
+.reset-confirm p {
+  margin: 0 0 18px;
+  color: #b5c5d8;
+  font-size: 13px;
+}
+.reset-actions {
+  display: flex;
+  justify-content: center;
+  gap: 22px;
+}
+.text-action.primary {
+  color: #f3f7ff;
+  font-weight: 700;
+}
+.victory-emblem {
+  height: 160px;
+  display: grid;
+  place-items: center;
+  position: relative;
+  color: var(--accent);
+  font-size: 64px;
+  text-shadow: 0 0 40px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+.victory-emblem:before {
+  content: "";
+  position: absolute;
+  border: 1px solid currentColor;
+  opacity: 0.3;
+  width: 100px;
+  height: 100px;
+  transform: rotate(45deg);
+  border-radius: 20px;
+}
+.result-stage {
+  font-size: 13px;
+  color: var(--accent);
+  letter-spacing: 0.15em;
+  margin: 10px 0 20px;
+}
+.defeat .victory-emblem {
+  color: #fc989d;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+.sr-only:focus-within {
+  clip-path: none;
+  width: auto;
+  height: auto;
+  inset: auto 10px 10px;
+  margin: 0;
+  padding: 12px;
+  white-space: normal;
+  background: #15243c;
+  border: 1px solid #7c94b7;
+  border-radius: 10px;
+  z-index: 9;
+}
+.sr-only button {
+  background: #243958;
+  border: 1px solid #7b8ca6;
+  border-radius: 6px;
+  padding: 7px;
+  margin: 3px;
+}
+button svg {
+  pointer-events: none;
+}
+@media (max-width: 550px) {
+  .hud {
+    height: 58px;
+    padding: 7px 14px;
+    gap: 12px;
+  }
+  .brand {
+    font-size: 11px;
+    letter-spacing: 0.15em;
+  }
+  .identity #stage-name {
+    font-size: 9px;
+  }
+  .icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 11px;
+  }
+  #steps {
+    gap: 5px;
+    margin-right: 0;
+  }
+  #overlay {
+    padding: 17px;
+  }
+  .panel {
+    padding: 19px;
+    border-radius: 22px;
+  }
+  .area-grid {
+    gap: 10px;
+  }
+  .area-tile {
+    padding: 12px 7px;
+  }
+  .area-title {
+    font-size: 13px;
+  }
+  .area-glyph {
+    height: 58px;
+  }
+  .area-glyph svg {
+    height: 58px;
+  }
+
+  .panel-header {
+    margin-bottom: 20px;
+  }
+}
+@media (max-height: 450px) {
+  .hud {
+    height: 46px;
+  }
+  .panel {
+    padding: 14px;
+  }
+  .area-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+  .area-tile {
+    padding: 7px;
+  }
+  .area-glyph {
+    display: none;
+  }
+  .area-title {
+    font-size: 12px;
+    margin: 5px 0 10px;
+  }
+
+  .panel-header {
+    margin-bottom: 12px;
+  }
+  .panel-footer {
+    margin-top: 10px;
+  }
+  .victory-emblem {
+    height: 75px;
+    font-size: 43px;
+  }
+  .victory-emblem:before {
+    width: 50px;
+    height: 50px;
+  }
+  .pause-actions {
+    padding: 8px 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+canvas:focus {
+  outline: none;
+}
+/* Four rule entrances; motion demonstrates the material, with no instructions. */
+.rule-choice {
+  cursor: pointer;
+  font: inherit;
+  text-align: center;
+  transition:
+    border-color 0.2s,
+    transform 0.2s;
+}
+.rule-choice:hover {
+  border-color: var(--tile);
+  transform: translateY(-3px);
+}
+.rule-choice:focus-visible {
+  outline: 2px solid var(--tile);
+  outline-offset: 3px;
+}
+.demo-dot {
+  animation: rule-demo 3.4s ease-in-out infinite;
+}
+.pack-demo-slot {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+  stroke-opacity: 0.16;
+  stroke-dasharray: 2 4;
+}
+.pack-demo-dot {
+  fill: currentColor;
+  animation: pack-radix-demo 5.6s ease-in-out infinite;
+}
+@keyframes pack-radix-demo {
+  0%,
+  18%,
+  100% {
+    transform: translate(var(--p2x), var(--p2y));
+  }
+  27%,
+  42% {
+    transform: translate(var(--p3x), var(--p3y));
+  }
+  51%,
+  66% {
+    transform: translate(var(--p4x), var(--p4y));
+  }
+  75%,
+  90% {
+    transform: translate(var(--p5x), var(--p5y));
+  }
+}
+@keyframes rule-demo {
+  0%,
+  16%,
+  100% {
+    transform: translate(0, 0);
+  }
+  40%,
+  54% {
+    transform: translate(var(--mx), var(--my));
+  }
+  73%,
+  82% {
+    transform: translate(var(--dx), var(--dy));
+  }
+}
+#steps {
+  white-space: nowrap;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--accent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .demo-dot {
+    animation: none;
+    transform: translate(var(--dx), var(--dy));
+  }
+  .pack-demo-dot {
+    animation: none;
+    transform: translate(var(--p5x), var(--p5y));
+  }
+}
+@media (max-width: 380px) {
+  #steps {
+    font-size: 9px;
+    letter-spacing: 1px;
+  }
+}
+
+.entrance .hud {
+  display: none;
+}
+@media (max-height: 450px) {
+  .area-glyph {
+    display: grid;
+    height: 58px;
+  }
+  .area-glyph svg {
+    height: 58px;
+  }
+}
+
+/* Four peer rule entrances. */
+.area-grid {
+  grid-template-columns: repeat(2, 1fr);
+}
+.rule-choice {
+  display: block;
+  padding: 9px 7px;
+}
+.rule-choice .area-glyph {
+  height: 58px;
+}
+.rule-choice .area-glyph svg {
+  width: 64px;
+  height: 54px;
+}
+.rule-choice .area-title {
+  margin: 4px 0 2px;
+}
+@media (min-width: 640px), (orientation: landscape) {
+  .area-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+  .rule-choice {
+    padding: 12px;
+  }
+  .rule-choice .area-glyph {
+    height: 62px;
+  }
+  .rule-choice .area-glyph svg {
+    width: 76px;
+    height: 60px;
+  }
+  .rule-choice .area-title {
+    margin-top: 8px;
+  }
+}

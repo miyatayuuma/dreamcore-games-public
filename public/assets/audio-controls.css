@@ -1,0 +1,39 @@
+/* Single shared audio control on both launcher and player navigation. */
+.audio-controls-root{display:inline-flex;align-items:center;flex:none}
+.audio-settings-trigger{width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;flex:none;border-radius:13px;border:2px solid #d8ddff;background:#fff;color:#35438b;cursor:pointer;padding:9px}
+.audio-settings-trigger:hover{background:#f0f2ff}
+.audio-settings-trigger:focus-visible,.audio-settings-close:focus-visible,.audio-settings-dialog input:focus-visible{outline:3px solid #5366dd;outline-offset:3px}
+.audio-settings-trigger svg{width:23px;height:23px}
+.audio-settings-icon-muted,.audio-settings-trigger.is-muted .audio-settings-icon{display:none}
+.audio-settings-trigger.is-muted .audio-settings-icon-muted{display:block}
+.audio-settings-dialog{border:0;padding:0;width:min(380px,calc(100vw - 28px));max-height:calc(100vh - 28px);max-height:calc(100dvh - 28px);border-radius:22px;background:#fffdf9;color:#202332;box-shadow:0 20px 75px rgba(18,27,54,.38);overflow:auto}
+.audio-settings-dialog::backdrop{background:rgba(10,17,36,.55)}
+.audio-settings-panel{padding:20px 22px 22px;font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif;font-size:15px}
+.audio-settings-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.audio-settings-heading h2{margin:0;font-size:1.18rem;line-height:1.4;color:#202332;letter-spacing:0}
+.audio-settings-close{display:grid;place-items:center;min-width:40px;min-height:40px;cursor:pointer;background:#f4f2ee;border:1px solid #e7e1d6;color:#31364c;font-size:26px;border-radius:12px;line-height:1}
+.audio-settings-switch{display:flex;align-items:center;justify-content:space-between;gap:15px;min-height:52px;padding:9px 1px;font-weight:750;color:#2a2e42}
+.audio-settings-switch input{accent-color:#4a5bdd;width:23px;height:23px;cursor:pointer;flex:none}
+.audio-settings-sliders{border-top:1px solid #e8e0d5;border-bottom:1px solid #e8e0d5;padding:13px 0 15px;display:grid;gap:8px}
+.audio-settings-field{display:flex;justify-content:space-between;gap:12px;font-size:14px;font-weight:720;color:#333a56}
+.audio-settings-field output{font-variant-numeric:tabular-nums;font-weight:850;color:#3547a7}
+.audio-settings-sliders input[type="range"]{display:block;width:100%;height:29px;cursor:pointer;accent-color:#4a5bdd;margin:0 0 7px}
+.audio-settings-speech{min-height:52px}
+.audio-settings-note{margin:10px 0 0;color:#626579;font-size:12px;line-height:1.65;font-weight:500}
+#game-nav .audio-controls-root{margin-left:auto}
+#game-nav .audio-settings-trigger{min-width:42px;width:42px;height:42px;border-color:#657297;background:#283554;color:#fff}
+#game-nav .audio-settings-trigger:hover{background:#35466c}
+@media(max-width:600px){
+ .audio-settings-dialog{width:min(360px,calc(100vw - 20px))}
+ .audio-settings-panel{padding:16px 19px 18px}
+ .audio-settings-trigger{width:42px;height:42px}
+}
+@media(max-width:360px){
+ .site-header .brand{font-size:.84rem;gap:5px}
+ .site-header .brand-icon{width:34px;height:34px;font-size:19px;border-radius:12px}
+ .site-header .header-actions{gap:5px}
+ .site-header .install-button{font-size:.69rem;padding:6px 7px;min-height:38px}
+ .site-header .audio-settings-trigger{width:38px;height:38px;padding:7px}
+}
+
+@media(max-width:360px){.site-header .install-long{display:none}}

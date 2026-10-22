@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "games": [
+    {
+      "id": "core-break",
+      "title": "CORE BREAK",
+      "description": "数のかたまりを武器にして、敵に立ち向かおう。",
+      "category": "さんすう",
+      "emoji": "🔷",
+      "accent": "violet",
+      "status": "ready",
+      "path": "games/core-break/",
+      "cover": "covers/core-break.svg"
+    },
+    {
+      "id": "factor-raid",
+      "title": "FACTOR RAID",
+      "description": "大きな数の弱点を見つけて、敵のコアを打ちくだこう。",
+      "category": "さんすう",
+      "emoji": "💥",
+      "accent": "blue",
+      "status": "ready",
+      "path": "games/factor-raid/",
+      "cover": "covers/factor-raid.svg"
+    }
+  ],
+  "works": []
+}

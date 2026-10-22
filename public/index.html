@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f9f5ee">
+  <meta name="description" content="公開コード版のゲーム集。">
+  <title>ゲームのひろば</title>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <link rel="stylesheet" href="./assets/app.css">
+  <link rel="stylesheet" href="./assets/audio-controls.css">
+  <script type="module" src="./assets/app.js"></script>
+
+<script src="./assets/audio-settings.js"></script>
+<script defer src="./assets/audio-controls.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#games">ゲーム一覧へ</a>
+  <header class="site-header">
+    <div class="brand" aria-label="ゲームのひろば">
+      <span class="brand-icon" aria-hidden="true">🎮</span>
+      <span>ゲームのひろば</span>
+    </div>
+    <div class="header-actions">
+      <span class="header-label">MINI GAME COLLECTION</span>
+      <button id="install-app" class="install-button" type="button" aria-label="アプリをインストール" aria-controls="install-help"><span class="install-long">アプリを</span>インストール</button>
+      <span class="audio-controls-root" data-audio-controls></span>
+    </div>
+  </header>
+
+  <p id="install-help" class="install-help" role="status" hidden></p>
+  <main>
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <span class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span> あそびがいっぱい</span>
+        <h1 id="hero-title">きょうは、<br><span>なにで あそぶ？</span></h1>
+        <p>すきなゲームをえらんで、ぼうけんにでかけよう。<br>公開可能なゲームから順に追加していくよ。</p>
+        <a class="hero-link" href="#games">ゲームをえらぶ <span aria-hidden="true">↓</span></a>
+      </div>
+      <div class="hero-art" aria-hidden="true">
+        <span class="hero-spark spark-1">✦</span>
+        <span class="hero-spark spark-2">✳</span>
+        <span class="hero-spark spark-3">✦</span>
+        <span class="hero-orbit"></span>
+        <span class="hero-toy toy-1"><img src="./covers/factor-raid.svg" alt=""></span>
+        <span class="hero-toy toy-2"><img src="./covers/core-break.svg" alt=""></span>
+        <span class="hero-toy toy-3"><img src="./covers/factor-raid.svg" alt=""></span>
+      </div>
+    </section>
+
+    <section class="library" id="games" aria-labelledby="games-title">
+      <div class="section-heading">
+        <div>
+          <span class="section-overline">YOUR GAME LIBRARY</span>
+          <h2 id="games-title">ゲームをえらぼう</h2>
+        </div>
+        <span id="games-count" class="count-pill" aria-live="polite">よみこみ中…</span>
+      </div>
+      <div id="games-grid" class="games-grid" aria-live="polite" aria-busy="true">
+        <p class="library-message">ゲームのリストをよみこんでいます。</p>
+      </div>
+    </section>
+    <section class="library works-library" id="works" aria-labelledby="works-title">
+      <div class="section-heading">
+        <div>
+          <span class="section-overline">SHORT FILM &amp; STORIES</span>
+          <h2 id="works-title">映像作品</h2>
+        </div>
+        <span id="works-count" class="count-pill" aria-live="polite">よみこみ中…</span>
+      </div>
+      <div id="works-grid" class="games-grid works-grid" aria-live="polite" aria-busy="true">
+        <p class="library-message">作品をよみこんでいます。</p>
+      </div>
+    </section>
+    <p class="library-note">この公開版には、個人向け作品や第三者の音源を収録していません。</p>
+  </main>
+  <footer class="site-footer"><span>ゲームのひろば</span><span>つくったゲームを、これからも。</span></footer>
+</body>
+</html>
