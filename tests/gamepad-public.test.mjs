@@ -148,6 +148,10 @@ test('shell A produces pointer tap, dragging holds pointer, Select returns home'
   assert.ok(h.target.events.includes('pointermove'));
   assert.equal(h.target.clicks, 1, 'drag must not synthesize a tap');
   h.pad.axes[0] = 0; h.step();
+  h.press(0); h.step();
+  h.press(1); h.step();
+  assert.ok(h.target.events.includes('pointercancel'));
+  h.release(0); h.release(1); h.step();
   h.press(8); h.step();
   assert.equal(h.assigned, './');
   assert.ok(h.calls.every(c => c.origin === 'https://game.test'));
