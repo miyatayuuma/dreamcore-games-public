@@ -23,6 +23,8 @@
   let lastTime = 0;
   let lastLocalButtons = [];
   let localArmed = false;
+  let motionArmed = true;
+  let deviceSignature = '';
   let lastNarrationAt = -Infinity;
 
   function visible(id) {
@@ -89,6 +91,7 @@
     padMove.active = false;
     lastLocalButtons = [];
     localArmed = false;
+    motionArmed = false;
     lastTime = 0;
     lastNarrationAt = -Infinity;
   }
@@ -128,19 +131,32 @@
     requestAnimationFrame(sample);
     if (document.hidden) { reset(); return; }
     const device = pad();
-    if (!device) { reset(); return; }
+    if (!device) { reset(); deviceSignature = ''; return; }
+    const signature = String(device.index) + ':' + device.id;
+    if (deviceSignature && signature !== deviceSignature) reset();
+    deviceSignature = signature;
 
     const dt = Math.min(MAX_DELTA, lastTime ? Math.max(0, (now - lastTime) / 1000) : 0);
     lastTime = now;
     const axes = device.axes || [];
     const { x: mx, y: my } = moveAxes(axes[0], axes[1]);
+    const rx = axis(axes[2]), ry = axis(axes[3]);
+    const buttons = Array.from(device.buttons || [],
+      item => !!(item?.pressed || item?.value > 0.5));
+    // A release must survive subsequent local polls while a stick is held.
+    // Require neutral axes AND buttons before accepting motion again.
+    if (!motionArmed) {
+      if (!mx && !my && !rx && !ry && buttons.every(value => !value)) {
+        motionArmed = true;
+      }
+      return;
+    }
 
     const allowed = playEnabled();
     padMove.x = allowed ? mx : 0;
     padMove.y = allowed ? my : 0;
     padMove.active = allowed && Math.hypot(mx, my) > 0.001;
 
-    const rx = axis(axes[2]), ry = axis(axes[3]);
     if (allowed && dt && (rx || ry)) {
       window.__dreamcoreAdventureLook?.(rx, ry, dt);
     }
@@ -148,8 +164,6 @@
     // In a DreamCore iframe, the parent owns button edges.
     if (window.parent !== window) return;
 
-    const buttons = Array.from(device.buttons || [],
-      item => !!(item?.pressed || item?.value > 0.5));
     if (!localArmed) {
       if (buttons.every(value => !value)) localArmed = true;
     } else {

@@ -35,7 +35,7 @@ function setup(game) {
     requestAnimationFrame: callback => callbacks.push(callback)
   });
   return {
-    win, doc, controller, actions,
+    win, doc, controller, actions, events,
     button(id, source = parent, origin = 'https://game.test') {
       events.get('message')?.({
         source, origin, data: { type: 'dreamcore:gamepad-v2',
@@ -162,4 +162,47 @@ test('radial adventure speed has fine, middle and 1.5x full-stick control', () =
   assert.equal(h.win.__dreamcoreAdventurePad.active, false);
   assert.equal(h.win.__dreamcoreAdventurePad.x, 0);
   assert.equal(h.win.__dreamcoreAdventurePad.y, 0);
+});
+
+test('release-all keeps adventure axes stopped until every control returns to neutral', () => {
+  const h = setup('gecko');
+  const looks = [];
+  h.win.__dreamcoreAdventureLook = (...args) => looks.push(args);
+  h.frame(1000);
+  h.controller.axes = [1, 0, 0.5, 0];
+  h.frame(1020);
+  assert.equal(h.win.__dreamcoreAdventurePad.active, true);
+  const beforeRelease = looks.length;
+  h.release();
+  h.frame(1040); h.frame(1060);
+  assert.equal(h.win.__dreamcoreAdventurePad.active, false,
+    'polling must not undo the parent release on the next frame');
+  assert.equal(looks.length, beforeRelease);
+  h.controller.axes = [0, 0, 0, 0];
+  h.controller.buttons[0].pressed = true;
+  h.frame(1080);
+  h.controller.axes[0] = 1;
+  h.frame(1100);
+  assert.equal(h.win.__dreamcoreAdventurePad.active, false,
+    'a held button also prevents rearming');
+  h.controller.buttons[0].pressed = false;
+  h.controller.axes[0] = 0;
+  h.frame(1120);
+  h.controller.axes[0] = 1;
+  h.frame(1140);
+  assert.equal(h.win.__dreamcoreAdventurePad.active, true);
+});
+
+test('blur and reconnect do not resume held adventure movement', () => {
+  const h = setup('tanabata');
+  h.frame(1000);
+  h.controller.axes[0] = 1; h.frame(1020);
+  h.events.get('blur')(); h.frame(1040);
+  assert.equal(h.win.__dreamcoreAdventurePad.active, false);
+  h.controller.connected = false; h.frame(1060);
+  h.controller.connected = true; h.frame(1080);
+  assert.equal(h.win.__dreamcoreAdventurePad.active, false);
+  h.controller.axes[0] = 0; h.frame(1100);
+  h.controller.axes[0] = 1; h.frame(1120);
+  assert.equal(h.win.__dreamcoreAdventurePad.active, true);
 });
