@@ -13,6 +13,8 @@
   const TYPE = 'dreamcore:gamepad-v2';
   const DEADZONE = 0.18;
   const MAX_DELTA = 0.05;
+  const MOVE_GAIN = 1.5;      // Controller-only: preserve touch movement speeds.
+  const MOVE_EXPONENT = 0.9;  // Smooth acceleration through the middle range.
   const padMove = { x: 0, y: 0, active: false };
   window.__dreamcoreAdventurePad = padMove;
   window.__dreamcoreGamepadCursorMode = () => 'off';
@@ -113,6 +115,15 @@
     return Math.abs(x) <= DEADZONE ? 0 :
       Math.sign(x) * Math.pow((Math.abs(x) - DEADZONE) / (1 - DEADZONE), 1.2);
   }
+  function moveAxes(rawX, rawY) {
+    const x = Number.isFinite(rawX) ? Math.max(-1, Math.min(1, rawX)) : 0;
+    const y = Number.isFinite(rawY) ? Math.max(-1, Math.min(1, rawY)) : 0;
+    const length = Math.hypot(x, y);
+    if (length <= DEADZONE) return { x: 0, y: 0 };
+    const amount = Math.pow((Math.min(1, length) - DEADZONE) / (1 - DEADZONE), MOVE_EXPONENT);
+    // Multiply the vector after radial normalization to cap diagonal speed.
+    return { x: x / length * amount * MOVE_GAIN, y: y / length * amount * MOVE_GAIN };
+  }
   function sample(now) {
     requestAnimationFrame(sample);
     if (document.hidden) { reset(); return; }
@@ -122,9 +133,7 @@
     const dt = Math.min(MAX_DELTA, lastTime ? Math.max(0, (now - lastTime) / 1000) : 0);
     lastTime = now;
     const axes = device.axes || [];
-    let mx = axis(axes[0]), my = axis(axes[1]);
-    const len = Math.hypot(mx, my);
-    if (len > 1) { mx /= len; my /= len; }
+    const { x: mx, y: my } = moveAxes(axes[0], axes[1]);
 
     const allowed = playEnabled();
     padMove.x = allowed ? mx : 0;
