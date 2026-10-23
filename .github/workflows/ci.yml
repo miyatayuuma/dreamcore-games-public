@@ -15,5 +15,6 @@ jobs:
           node-version: '22'
       - run: node scripts/verify-number-games.mjs
       - run: node --test tests/core-break/*.test.mjs
+      - run: node --test tests/assemble-production.test.mjs
       - run: node --check public/assets/app.js
       - run: node --check public/assets/audio-settings.js
