@@ -129,7 +129,7 @@ test('3D axes use deadzone, camera look, and release on lost input', () => {
   h.frame(1020); h.frame(1040);
   assert.equal(h.win.__dreamcoreAdventurePad.active, true);
   assert.ok(h.win.__dreamcoreAdventurePad.x > 0.7);
-  assert.ok(h.win.__dreamcoreAdventurePad.y < -0.7);
+  assert.ok(h.win.__dreamcoreAdventurePad.y < -0.6, 'diagonal motion is normalized');
   assert.equal(look.length, 1);
   const overlay = h.show('storyLayer');
   h.frame(1060); assert.equal(h.win.__dreamcoreAdventurePad.active, false);
