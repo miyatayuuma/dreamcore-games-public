@@ -1,0 +1,65 @@
+/* Visible gamepad cursor and compact connection status. */
+.gamepad-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  max-width: 230px;
+  padding: 5px 10px;
+  border-radius: 99px;
+  background: #e6f5e8;
+  color: #245c39;
+  font: 700 12px/1.4 system-ui, sans-serif;
+  white-space: normal;
+}
+.gamepad-status[hidden] { display: none !important; }
+.gamepad-status.is-warning { background: #fff0d1; color: #854d16; }
+.gamepad-selected {
+  outline: 4px solid #ffd65f !important;
+  outline-offset: 4px !important;
+  box-shadow: 0 0 0 7px rgba(33, 43, 74, .45) !important;
+}
+a.gamepad-selected { transform: translateY(-3px); }
+#game-nav .gamepad-status { flex: 0 0 auto; }
+@media (max-width: 640px) {
+  .gamepad-status { font-size: 10px; max-width: 112px; padding: 4px 7px; }
+  #game-nav .gamepad-status { max-width: 78px; }
+}
+
+/* Shared START menu, accessible with either controller or mouse. */
+.gamepad-system-dialog {
+  box-sizing: border-box;
+  width: min(360px, calc(100vw - 28px));
+  max-height: calc(100dvh - 28px);
+  padding: 0;
+  border: 0;
+  border-radius: 22px;
+  overflow: auto;
+  background: #fffdf9;
+  color: #202332;
+  box-shadow: 0 20px 75px rgba(18, 27, 54, .4);
+}
+.gamepad-system-dialog::backdrop { background: rgba(10, 17, 36, .64); }
+.gamepad-system-panel {
+  padding: 22px;
+  font: 600 15px/1.5 system-ui, -apple-system, "Noto Sans JP", sans-serif;
+}
+.gamepad-system-panel h2 { margin: 0 0 5px; font-size: 1.3rem; }
+.gamepad-system-panel p { margin: 0 0 17px; color: #5f6378; font-size: 13px; }
+.gamepad-system-actions { display: grid; gap: 10px; }
+.gamepad-system-actions button {
+  min-height: 54px;
+  border: 2px solid #d8ddff;
+  border-radius: 14px;
+  background: #f5f4fd;
+  color: #273464;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.gamepad-system-actions button:hover { background: #e8ebff; }
+.gamepad-system-actions button:focus-visible { outline: 4px solid #5366dd; outline-offset: 3px; }
+.gamepad-system-actions button.gamepad-selected {
+  outline: 4px solid #ffd65f !important;
+  outline-offset: 2px !important;
+}

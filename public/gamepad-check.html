@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GC201 ゲームパッド実機診断 | ゲームのひろば</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:#101827;color:#f1f5f9}
+body{margin:0 auto;max-width:920px;padding:clamp(16px,4vw,36px);line-height:1.6}
+a{color:#93c5fd}h1{font-size:clamp(1.35rem,4vw,2rem)}h2{font-size:1.15rem}
+section{background:#1e293b;border:1px solid #475569;border-radius:14px;padding:18px;margin:16px 0}
+.status{font-weight:700}.good{color:#86efac}.warn{color:#fcd34d}.bad{color:#fca5a5}
+.meta{overflow-wrap:anywhere}small,.note{color:#cbd5e1}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:9px}
+.tile{border:1px solid #475569;border-radius:9px;padding:8px 10px;background:#0f172a}
+.tile.active{border-color:#86efac;background:#14532d}.tile span{display:block;font-size:.84rem;color:#cbd5e1}
+button{font:inherit;font-weight:650;color:#07131d;background:#93c5fd;border:0;border-radius:10px;padding:11px 16px;cursor:pointer}
+button:disabled{opacity:.55;cursor:not-allowed}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#0f172a;padding:12px;border-radius:8px;max-height:300px;overflow:auto;font-size:.85rem}
+fieldset{border:0;padding:0}label{display:block;margin:5px 0}
+footer{color:#cbd5e1;font-size:.9rem}
+</style>
+</head>
+<body>
+<p><a href="./">← ゲームのひろば</a></p>
+<h1>Windows / GC201 実機入力診断</h1>
+<p>このページは物理コントローラーの入力をそのまま表示します。ゲーム本編への入力は発生しません。<strong>WindowsのChromeまたはEdge</strong>で開き、接続後にボタンを一度押してください。</p>
+<section>
+<h2>接続状態</h2>
+<p id="status" class="status warn" role="status" aria-live="polite">確認中…</p>
+<div id="device" class="meta"></div>
+<p class="note">認識されない場合は Windowsの <code>Win + R → joy.cpl</code> で動作を確認してください。<code>mapping</code> が <code>standard</code> 以外なら、コントローラーのXInputモードへ切り替える必要があります。</p>
+</section>
+<section>
+<h2>ボタン入力（押すと緑色）</h2>
+<div id="buttons" class="grid"></div>
+</section>
+<section>
+<h2>スティック／アナログ軸</h2>
+<div id="axes" class="grid"></div>
+<p class="note">想定：左スティックX/Yが軸0/1、右スティックX/Yが軸2/3。操作しない時はおおむね0へ戻ります。</p>
+</section>
+<section>
+<h2>確認する操作</h2>
+<fieldset>
+<label><input type="checkbox"> A/B/X/Yがそれぞれ0/1/2/3で反応する</label>
+<label><input type="checkbox"> STARTが9、SELECTが8で反応する</label>
+<label><input type="checkbox"> 十字キー上/下/左/右が12/13/14/15で反応する</label>
+<label><input type="checkbox"> 左スティックが軸0/1、右スティックが軸2/3で反応する</label>
+<label><input type="checkbox"> スティックを放すと数値が0付近へ戻る</label>
+<label><input type="checkbox"> 一度切断し、再接続後も反応する</label>
+</fieldset>
+</section>
+<section>
+<h2>診断結果</h2>
+<p>ボタンの押下・解放履歴を直近80件記録します。結果をコピーしてチャットに貼り付けると、配列違いや入力欠落を調べられます。</p>
+<p><button id="copy" type="button">結果をコピー</button> <span id="copy-status" role="status"></span></p>
+<pre id="history">まだ入力はありません。</pre>
+</section>
+<footer>診断データはブラウザー内だけに保持します。「結果をコピー」を押すまで外部へ送信しません。デバイス名などがコピー結果に含まれます。</footer>
+<script>
+(() => {
+  'use strict';
+  const buttonLabels = ['A（南）','B（東）','X（西）','Y（北）','LB','RB','LT','RT','SELECT','START','左スティック押込','右スティック押込','十字キー 上','十字キー 下','十字キー 左','十字キー 右','HOME'];
+  const axisLabels = ['左 X','左 Y','右 X','右 Y'];
+  const statusEl = document.getElementById('status');
+  const deviceEl = document.getElementById('device');
+  const buttonsEl = document.getElementById('buttons');
+  const axesEl = document.getElementById('axes');
+  const historyEl = document.getElementById('history');
+  const copyStatusEl = document.getElementById('copy-status');
+  const events = [];
+  let lastSignature = '';
+  let previous = [];
+  let snapshot = null;
+  function log(message) {
+    events.push(new Date().toLocaleTimeString('ja-JP') + ' ' + message);
+    if (events.length > 80) events.shift();
+    historyEl.textContent = events.join('\n');
+  }
+  function setStatus(message, state) {
+    if (statusEl.textContent === message) return;
+    statusEl.textContent = message;
+    statusEl.className = 'status ' + state;
+  }
+  function getPad() {
+    try {
+      const pads = Array.from(navigator.getGamepads?.() || []).filter(p => p && p.connected);
+      return pads.find(p => p.mapping === 'standard') || pads[0] || null;
+    } catch { return null; }
+  }
+  function paintButtons(buttons) {
+    if (buttonsEl.children.length !== buttons.length) {
+      buttonsEl.replaceChildren(...buttons.map((_, i) => {
+        const d = document.createElement('div');
+        d.className = 'tile';
+        const b = document.createElement('strong');
+        b.textContent = i + ' — ' + (buttonLabels[i] || '追加ボタン');
+        const s = document.createElement('span');
+        d.append(b, s);
+        return d;
+      }));
+    }
+    buttons.forEach((button, i) => {
+      const d = buttonsEl.children[i];
+      d.classList.toggle('active', button.pressed);
+      d.lastElementChild.textContent = button.pressed ? '押下 ' + button.value.toFixed(2) : button.value.toFixed(2);
+    });
+  }
+  function paintAxes(axes) {
+    if (axesEl.children.length !== axes.length) {
+      axesEl.replaceChildren(...axes.map((_, i) => {
+        const d = document.createElement('div');
+        d.className = 'tile';
+        const b = document.createElement('strong');
+        b.textContent = '軸' + i + ' — ' + (axisLabels[i] || '追加軸');
+        const s = document.createElement('span');
+        d.append(b, s);
+        return d;
+      }));
+    }
+    axes.forEach((value, i) => {
+      const d = axesEl.children[i];
+      d.classList.toggle('active', Math.abs(value) > .25);
+      d.lastElementChild.textContent = value.toFixed(3);
+    });
+  }
+  function frame() {
+    const pad = getPad();
+    if (!pad) {
+      if (lastSignature) log('切断 / 認識消失');
+      lastSignature = '';
+      previous = [];
+      snapshot = null;
+      setStatus('未検出 — 接続後にボタンを押してください', 'warn');
+      deviceEl.textContent = 'Gamepad APIがまだコントローラーを報告していません。';
+      buttonsEl.replaceChildren();
+      axesEl.replaceChildren();
+      requestAnimationFrame(frame);
+      return;
+    }
+    const signature = pad.index + '|' + pad.id + '|' + pad.mapping;
+    if (signature !== lastSignature) {
+      lastSignature = signature;
+      previous = [];
+      log('接続 ' + pad.id + ' / mapping=' + (pad.mapping || '(なし)'));
+    }
+    const buttons = Array.from(pad.buttons || [], b => ({
+      pressed: Boolean(b.pressed || b.value > .5),
+      value: Number(b.value || 0)
+    }));
+    const axes = Array.from(pad.axes || [], a => Number(a || 0));
+    buttons.forEach((b, i) => {
+      if (previous[i] !== undefined && previous[i] !== b.pressed) log('button ' + i + (b.pressed ? ' DOWN' : ' UP'));
+    });
+    previous = buttons.map(b => b.pressed);
+    snapshot = {id: pad.id, mapping: pad.mapping, index: pad.index, buttons, axes};
+    setStatus(pad.mapping === 'standard' ? '認識済み — 標準マッピング' : '認識済み — 非標準マッピング（要確認）', pad.mapping === 'standard' ? 'good' : 'bad');
+    deviceEl.textContent = '名称: ' + pad.id + ' / index: ' + pad.index + ' / mapping: ' + (pad.mapping || '(なし)') + ' / ボタン: ' + buttons.length + ' / 軸: ' + axes.length;
+    paintButtons(buttons);
+    paintAxes(axes);
+    requestAnimationFrame(frame);
+  }
+  document.getElementById('copy').addEventListener('click', async () => {
+    const report = [
+      'DreamCore GC201 Windows diagnostic',
+      'date: ' + new Date().toISOString(),
+      'userAgent: ' + navigator.userAgent,
+      'device: ' + JSON.stringify(snapshot),
+      'events:',
+      ...events
+    ].join('\n');
+    try {
+      await navigator.clipboard.writeText(report);
+      copyStatusEl.textContent = 'コピーしました';
+    } catch {
+      copyStatusEl.textContent = 'コピー失敗。以下を選択してコピーしてください。';
+      historyEl.textContent = report;
+    }
+  });
+  window.addEventListener('gamepadconnected', e => log('gamepadconnected index=' + e.gamepad.index));
+  window.addEventListener('gamepaddisconnected', e => log('gamepaddisconnected index=' + e.gamepad.index));
+  if (!navigator.getGamepads) {
+    setStatus('このブラウザーではGamepad APIが利用できません', 'bad');
+    return;
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

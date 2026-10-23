@@ -18,3 +18,6 @@ jobs:
       - run: node --test tests/assemble-production.test.mjs
       - run: node --check public/assets/app.js
       - run: node --check public/assets/audio-settings.js
+      - run: node --check public/assets/gamepad-nav.js
+      - run: node --check public/assets/gamepad-math-adapters.mjs
+      - run: node --test tests/gamepad-public.test.mjs
