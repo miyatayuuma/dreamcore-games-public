@@ -169,3 +169,47 @@ test('math adapter rejects foreign messages and accepts same-origin parent input
   receive({ source: parent, origin: 'https://game.test',
     data: { type: 'dreamcore:gamepad-v2', action: 'release-all' } });
 });
+
+
+test('FACTOR RAID page loads the public math controller adapter once', () => {
+  const html = read('public/games/factor-raid/index.html');
+  assert.equal((html.match(/src="\.\.\/\.\.\/assets\/gamepad-math-adapters\.mjs"/g) || []).length, 1);
+  assert.match(html, /src="game\.js\?/);
+});
+
+test('FACTOR RAID adapter turns A into a pointer drop on the arena', () => {
+  const handlers = new Map(), parent = {}, events = [];
+  const card = fakeElement('div', 10), arena = fakeElement('div', 280);
+  card.dataset.v = '2';
+  card.dispatchEvent = event => { events.push({ target: 'card', type: event.type }); return true; };
+  arena.dispatchEvent = event => { events.push({ target: 'arena', type: event.type }); return true; };
+  const document = {
+    hidden: false, head: fakeElement(), body: fakeElement(),
+    createElement: fakeElement,
+    querySelector: selector => selector === '#arena' ? arena : null,
+    querySelectorAll: selector => selector === '#dock .card' ? [card] : [],
+    addEventListener: (name, fn) => handlers.set('document:' + name, fn)
+  };
+  const window = {
+    parent, addEventListener: (name, fn) => handlers.set(name, fn),
+    dispatchEvent: event => { events.push({ target: 'window', type: event.type }); return true; }
+  };
+  class SyntheticPointer {
+    constructor(type, init) { Object.assign(this, { type }, init); }
+  }
+  runInNewContext(adapter, {
+    window, document, location: {
+      pathname: '/games/factor-raid/index.html', origin: 'https://game.test'
+    },
+    getComputedStyle: () => ({ display: 'block', visibility: 'visible' }),
+    performance: { now: () => 1000 }, setInterval() {},
+    Event: class {}, KeyboardEvent: class {}, PointerEvent: SyntheticPointer
+  }, { timeout: 1000 });
+  handlers.get('message')({
+    source: parent, origin: 'https://game.test',
+    data: { type: 'dreamcore:gamepad-v2', action: 'button', phase: 'down', button: 0 }
+  });
+  assert.deepEqual(events.map(x => [x.target, x.type]), [
+    ['card', 'pointerdown'], ['window', 'pointermove'], ['window', 'pointerup']
+  ]);
+});
