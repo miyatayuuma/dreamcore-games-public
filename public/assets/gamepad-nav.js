@@ -119,6 +119,9 @@
           bubbles: true, pointerId: 41, pointerType: 'mouse', isPrimary: true
         }));
       }
+      // Many canvas games only clean up their drag on pointerup, not pointercancel.
+      // Release outside the playable area, avoiding an accidental drop/action.
+      dispatch({ ...holding.start, x: -1, y: -1 }, 'up', 0);
     } else {
       dispatch(end || holding.start, 'up', 0);
       const distance = Math.hypot(x - holding.x, y - holding.y);
