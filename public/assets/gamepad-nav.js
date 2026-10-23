@@ -35,6 +35,24 @@
   let x = 0, y = 0, positioned = false;
   let holding = null;
   let controllerVisible = false;
+  let capturedA = false;
+
+  function gameControl(name, fallback) {
+    if (!frame || frame.hidden) return fallback;
+    try {
+      const control = frame.contentWindow?.[name];
+      return typeof control === 'function' ? control() : fallback;
+    } catch { return fallback; }
+  }
+  function pointerDisabled() {
+    return gameControl('__dreamcoreGamepadCursorMode', 'on') === 'off';
+  }
+  function relayButton(button, phase) {
+    if (!frame || frame.hidden) return;
+    try {
+      frame.contentWindow?.postMessage({ type: TYPE, action: 'button', button, phase }, location.origin);
+    } catch { /* The game may be navigating to another origin. */ }
+  }
 
   function getPad() {
     try {
@@ -62,7 +80,7 @@
   }
   function paint() {
     cursor.style.transform = 'translate3d(' + Math.round(x) + 'px,' + Math.round(y) + 'px,0)';
-    cursor.classList.toggle('is-visible', controllerVisible);
+    cursor.classList.toggle('is-visible', controllerVisible && !pointerDisabled());
     cursor.classList.toggle('is-pressed', !!holding);
   }
   function recordAt(clientX, clientY) {
@@ -100,19 +118,23 @@
       element.dispatchEvent(new win.MouseEvent(mouse, init));
     }
   }
+  function heldRecordAt(clientX = x, clientY = y) {
+    if (!holding) return null;
+    const start = holding.start;
+    const rect = frame && start.win === frame.contentWindow
+      ? frame.getBoundingClientRect() : null;
+    return {
+      element: start.element,
+      win: start.win,
+      x: rect ? clientX - rect.left : clientX,
+      y: rect ? clientY - rect.top : clientY
+    };
+  }
   function finishHold(cancel = false) {
     if (!holding) return;
-    let end = recordAt(x, y);
-    if (end?.win !== holding.start.win) {
-      // Release against the original game even after crossing the iframe edge.
-      const rect = frame?.getBoundingClientRect();
-      end = {
-        element: holding.start.element,
-        win: holding.start.win,
-        x: rect ? clamp(x - rect.left, 0, rect.width) : x,
-        y: rect ? clamp(y - rect.top, 0, rect.height) : y
-      };
-    }
+    // Emulate pointer capture: a held drag must stay owned by its start element,
+    // including when the cursor crosses canvas controls or the iframe edge.
+    const end = heldRecordAt();
     if (cancel) {
       if (holding.start.element.isConnected && typeof holding.start.win.PointerEvent === 'function') {
         holding.start.element.dispatchEvent(new holding.start.win.PointerEvent('pointercancel', {
@@ -123,7 +145,7 @@
       // Release outside the playable area, avoiding an accidental drop/action.
       dispatch({ ...holding.start, x: -1, y: -1 }, 'up', 0);
     } else {
-      dispatch(end || holding.start, 'up', 0);
+      dispatch(end, 'up', 0);
       const distance = Math.hypot(x - holding.x, y - holding.y);
       if (distance <= TAP_TOLERANCE && holding.start.element.isConnected &&
           typeof holding.start.element.click === 'function') {
@@ -135,6 +157,7 @@
   }
   function release() {
     finishHold(true);
+    capturedA = false;
     armed = false;
     lastButtons = [];
     controllerVisible = false;
@@ -158,6 +181,7 @@
     paint();
   }
   function moveCursor(pad, buttons, dt) {
+    if (pointerDisabled()) { paint(); return; }
     const axes = pad.axes || [];
     let vx = stick(axes[0]), vy = stick(axes[1]);
     if (buttons[14]) vx = -1;
@@ -170,7 +194,7 @@
       x = clamp(x + dx, 0, Math.max(0, window.innerWidth - 1));
       y = clamp(y + dy, 0, Math.max(0, window.innerHeight - 1));
       activateCursor();
-      if (holding) dispatch(recordAt(x, y) || holding.start, 'move', 1);
+      if (holding) dispatch(heldRecordAt(), 'move', 1);
       paint();
     }
     const wheel = stick(axes[3]);
@@ -226,8 +250,19 @@
     const pressed = index => buttons[index] && !lastButtons[index];
     const released = index => !buttons[index] && lastButtons[index];
     moveCursor(pad, buttons, dt);
-    if (pressed(0)) tapDown();
-    if (released(0)) finishHold();
+    for (let i = 0; i < buttons.length; i++) {
+      if (i === 8 || i === 9) continue;
+      if (pressed(i)) relayButton(i, 'down');
+      if (released(i)) relayButton(i, 'up');
+    }
+    if (pressed(0)) {
+      capturedA = !!gameControl('__dreamcoreGamepadCaptureA', false);
+      if (!capturedA) tapDown();
+    }
+    if (released(0)) {
+      if (!capturedA) finishHold();
+      capturedA = false;
+    }
     if (pressed(1)) finishHold(true);
     if (frame && pressed(8)) {
       release();

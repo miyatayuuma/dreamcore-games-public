@@ -49,6 +49,7 @@ let progress = freshProgress(),
   epoch = 0,
   menu = null;
 let roundEvidence = { rejectedAttacks: 0, wrongCompletedRadices: new Set() };
+const pad = { gearCandidate: null, packRadix: null, packHolding: false, packLevel: 0 };
 try {
   const data = JSON.parse(
     localStorage.getItem(KEY) || localStorage.getItem(LEGACY_SAVE_KEY) || "{}",
@@ -193,6 +194,7 @@ function closeMenu() {
   if (run?.status === "won" && !world.busy) queueMicrotask(nextProblem);
 }
 function openPanel(html, kind) {
+  clearPadState();
   if (pointer !== null) cancelPointer();
   pointer = null;
   peel = null;
@@ -311,6 +313,7 @@ function pauseMenu() {
   );
 }
 function start(id, changeHash = true, restartProblem = null) {
+  clearPadState();
   epoch++;
   world.token = epoch;
   pointer = null;
@@ -404,6 +407,179 @@ async function transferPackMass(level) {
   keyboardUI();
   return true;
 }
+function clearPadState() {
+  if (pad.packHolding) world.cancel();
+  pad.gearCandidate = null;
+  pad.packRadix = null;
+  pad.packHolding = false;
+  pad.packLevel = 0;
+  world.widthAdjustCandidate = null;
+  world.widthAdjusting = false;
+  world.widthAdjustPieceId = null;
+  world.cancelPackControl?.();
+}
+function padReady() {
+  return !!run && !menu && overlay.hidden && !world.busy &&
+    !world.paused && run.status === "play";
+}
+function padWholePiece(piece) {
+  if (!piece) return false;
+  const pos = world.positions.get(piece.id);
+  if (!pos) return false;
+  selected = { pieceId: piece.id, ids: [...piece.ids], anchor: pos };
+  world.begin(selected, pos.x, pos.y);
+  return true;
+}
+function padActiveTarget() {
+  return activeTargets(run)[0];
+}
+function padLinkPiece() {
+  const index = padActiveTarget(), target = run.targets[index];
+  if (!target) return null;
+  const quantity = target.kind === "divide" ? target.input : target.n;
+  return run.pieces.find((piece) => piece.ids.length === quantity) || null;
+}
+function padAttack() {
+  if (!padReady()) return;
+  const area = run.stage.area;
+  if (area === "pack" || (area === "gear" && pad.gearCandidate !== null)) return;
+  const index = padActiveTarget();
+  if (index === undefined) return;
+  const target = run.targets[index];
+  if (area === "spark") {
+    if (!world.drag || !selected) return;
+    const piece = run.pieces.find((p) => p.id === selected.pieceId);
+    if (!piece || selected.ids.length !== piece.ids.length) return;
+    const match = activeTargets(run).find((i) => run.targets[i].n === selected.ids.length);
+    if (pointer !== null) {
+      const previousPointer = pointer;
+      pointer = null;
+      peel = null;
+      if (canvas.hasPointerCapture(previousPointer)) canvas.releasePointerCapture(previousPointer);
+    }
+    drop({ kind: "target", index: match ?? index }).catch(failSafe);
+    return;
+  }
+  const piece = area === "link" ? padLinkPiece() : run.pieces[0];
+  if (!padWholePiece(piece)) return;
+  drop(target.kind === "divide" ? { kind: "gate" } : { kind: "target", index }).catch(failSafe);
+}
+function padChooseWidth(delta) {
+  if (!padReady()) return;
+  const area = run.stage.area;
+  if (area === "link") {
+    const piece = padLinkPiece();
+    if (!piece || run.targets[padActiveTarget()]?.kind !== "divide") return;
+    const next = Math.max(2, Math.min(piece.ids.length, (piece.width || (delta > 0 ? 1 : 3)) + delta));
+    if (setWidth(run, piece.id, next)) {
+      world.sync();
+      keyboardUI();
+      tone("pick", next);
+    }
+    return;
+  }
+  if (area === "gear") {
+    const max = Math.min(...run.pieces.map((piece) => piece.ids.length));
+    const previous = pad.gearCandidate ?? run.width;
+    pad.gearCandidate = Math.max(2, Math.min(max, (previous || (delta > 0 ? 1 : 3)) + delta));
+    world.widthAdjustCandidate = pad.gearCandidate;
+    world.widthAdjustPieceId = run.pieces[0]?.id ?? null;
+    world.widthAdjusting = true;
+    tone("pick", pad.gearCandidate);
+    return;
+  }
+  if (area === "pack" && !pad.packHolding) {
+    const options = world.read().pack.allowedRadices;
+    const current = pad.packRadix ?? run.pack.base;
+    const next = Math.max(0, Math.min(options.length - 1, options.indexOf(current) + delta));
+    pad.packRadix = options[next];
+    const control = world.packControl();
+    if (control) world.packControlX = control.x1 +
+      (control.x2 - control.x1) * next / Math.max(1, options.length - 1);
+    tone("pick", pad.packRadix);
+  }
+}
+function padCommitPackRadix() {
+  const next = pad.packRadix;
+  pad.packRadix = null;
+  world.cancelPackControl?.();
+  if (next == null || next === run.pack.base) return;
+  const previous = run.pack.base;
+  if (!setPackBase(run, next)) return;
+  tone("merge");
+  const token = epoch, transition = world.radixChanged?.(previous, next);
+  world.sync();
+  keyboardUI();
+  Promise.resolve(transition).then((completed) => {
+    if (completed && token === epoch) {
+      settlePackTransition(run);
+      keyboardUI();
+    }
+  }).catch(failSafe);
+}
+function padPackPosition(level) {
+  const layout = world.read().pack;
+  const slot = layout.slots.find((item) => item.level === level);
+  if (!slot || !world.drag) return;
+  world.move(slot.x, slot.y);
+}
+function padPackDown() {
+  if (pad.packRadix !== null) { padCommitPackRadix(); return; }
+  const state = world.read().pack, mass = state.numberMass;
+  if (!mass?.quantity) return;
+  const hit = world.hit(mass.x, mass.y);
+  if (!hit) return;
+  selected = hit;
+  world.begin(hit, mass.x, mass.y);
+  pad.packHolding = true;
+  if (!state.directInputLevels.includes(pad.packLevel)) pad.packLevel = state.directInputLevels[0];
+  if (pad.packLevel !== undefined) padPackPosition(pad.packLevel);
+  tone("pick");
+}
+function padPackUp() {
+  if (!pad.packHolding) return;
+  pad.packHolding = false;
+  if (world.drag && pad.packLevel !== undefined)
+    drop({ kind: "pack-input", level: pad.packLevel }).catch(failSafe);
+  else world.cancel();
+}
+function padPackNext() {
+  if (!pad.packHolding || !padReady()) return;
+  const levels = world.read().pack.directInputLevels;
+  if (!levels.length) return;
+  pad.packLevel = levels[(levels.indexOf(pad.packLevel) + 1) % levels.length];
+  padPackPosition(pad.packLevel);
+  tone("pick", pad.packLevel + 1);
+}
+function padButton(button, phase) {
+  if (phase === "up") {
+    if (button === 0) padPackUp();
+    return;
+  }
+  if (!padReady()) return;
+  if (button === 4 || button === 5) padChooseWidth(button === 5 ? 1 : -1);
+  else if (button === 7) {
+    if (run.stage.area === "pack") padPackNext();
+    else padAttack();
+  } else if (button === 0) {
+    if (run.stage.area === "pack") padPackDown();
+    else if (run.stage.area === "gear" && pad.gearCandidate !== null) {
+      setWidth(run, run.pieces[0].id, pad.gearCandidate);
+      pad.gearCandidate = null;
+      world.widthAdjustCandidate = null;
+      world.widthAdjusting = false;
+      world.widthAdjustPieceId = null;
+      world.sync();
+      keyboardUI();
+      tone("merge");
+    }
+  }
+}
+window.__coreBreakGamepad = { button: padButton, release: clearPadState };
+const padPackActive = () => !!run && !menu && overlay.hidden && run.stage.area === "pack";
+window.__dreamcoreGamepadCaptureA = () => padPackActive() ||
+  (padReady() && run.stage.area === "gear" && pad.gearCandidate !== null);
+window.__dreamcoreGamepadCursorMode = () => padPackActive() ? "off" : "on";
 async function drop(destination) {
   const drag = world.drag;
   if (!drag || world.busy || run.status !== "play") return;
@@ -500,7 +676,7 @@ canvas.addEventListener("pointerdown", (e) => {
     e.preventDefault();
     pointer = e.pointerId;
     packPointer = true;
-    canvas.setPointerCapture(pointer);
+    try { canvas.setPointerCapture(pointer); } catch { /* Virtual pointer has no native capture. */ }
     world.beginPackControl(p.x);
     tone("pick");
     return;
@@ -509,7 +685,7 @@ canvas.addEventListener("pointerdown", (e) => {
   if (handle) {
     e.preventDefault();
     pointer = e.pointerId;
-    canvas.setPointerCapture(pointer);
+    try { canvas.setPointerCapture(pointer); } catch { /* Virtual pointer has no native capture. */ }
     widthPointer = {
       ...handle,
       startX: p.x,
@@ -525,7 +701,7 @@ canvas.addEventListener("pointerdown", (e) => {
   if (!hit) return;
   e.preventDefault();
   pointer = e.pointerId;
-  canvas.setPointerCapture(pointer);
+  try { canvas.setPointerCapture(pointer); } catch { /* Virtual pointer has no native capture. */ }
   tone("pick", hit.ids.length);
   world.begin(hit, p.x, p.y);
   peel =

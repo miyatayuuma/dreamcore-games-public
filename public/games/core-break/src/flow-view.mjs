@@ -361,7 +361,10 @@ export class FlowWorld extends World {
         c.roundRect(h.x - 28, h.y - 13, 56, 26, 13);
         c.fill();
         c.stroke();
-        drawSelectorDots(this, p.width, h.x, h.y, this.color, {
+        const displayedWidth = this.run.stage.area === "gear" &&
+          this.widthAdjustCandidate !== null && this.widthAdjustCandidate !== undefined
+          ? this.widthAdjustCandidate : p.width;
+        drawSelectorDots(this, displayedWidth, h.x, h.y, this.color, {
           radius: 8,
           dotScale: 0.62,
           minimumDotRadius: 1.15,
