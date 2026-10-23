@@ -345,3 +345,24 @@ test('CORE BREAK exposes rule-specific direct controller actions and no menu HUD
     'GEAR selector renders the pending choice without changing piece widths');
   assert.doesNotMatch(adapter, /dreamcore-pad-hud|data-piece|data-target/);
 });
+
+test('launcher cursor responds quickly without diagonal overspeed or deadzone drift', () => {
+  const measuredX = (x, y = 0) => {
+    const h = navigationHarness('home');
+    h.step();
+    h.pad.axes[0] = x; h.pad.axes[1] = y;
+    for (let i = 0; i < 8; i++) h.step();
+    h.press(0); h.step(); // Pointer down samples the cursor position.
+    return h.currentX;
+  };
+  assert.ok(measuredX(0.18) === 400, 'inside deadzone remains stationary');
+  const fine = measuredX(0.25);
+  const middle = measuredX(0.55);
+  const full = measuredX(1);
+  assert.ok(fine > 410 && fine < 480, 'short travel retains precision');
+  assert.ok(middle > 580 && middle < 740, 'middle travel must be responsive');
+  assert.ok(full > 760, 'full travel crosses the screen quickly');
+  const diagonal = measuredX(1, 1);
+  assert.ok(diagonal < full && diagonal > 660,
+    'radial clamping prevents faster diagonal travel');
+});
