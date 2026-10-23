@@ -576,9 +576,10 @@ function padButton(button, phase) {
   }
 }
 window.__coreBreakGamepad = { button: padButton, release: clearPadState };
-window.__dreamcoreGamepadCaptureA = () => padReady() &&
-  (run.stage.area === "pack" || (run.stage.area === "gear" && pad.gearCandidate !== null));
-window.__dreamcoreGamepadCursorMode = () => padReady() && run.stage.area === "pack" ? "off" : "on";
+const padPackActive = () => !!run && !menu && overlay.hidden && run.stage.area === "pack";
+window.__dreamcoreGamepadCaptureA = () => padPackActive() ||
+  (padReady() && run.stage.area === "gear" && pad.gearCandidate !== null);
+window.__dreamcoreGamepadCursorMode = () => padPackActive() ? "off" : "on";
 async function drop(destination) {
   const drag = world.drag;
   if (!drag || world.busy || run.status !== "play") return;

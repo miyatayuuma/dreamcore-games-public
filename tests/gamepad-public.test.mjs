@@ -338,6 +338,8 @@ test('CORE BREAK exposes rule-specific direct controller actions and no menu HUD
   assert.match(game, /__coreBreakGamepad = \{ button: padButton, release: clearPadState \}/);
   assert.match(game, /padPackNext\(\)/);
   assert.match(game, /pad\.gearCandidate !== null/);
+  assert.match(game, /padPackActive\(\) \? "off" : "on"/,
+    'PACK hides the cursor throughout the action, including animations');
   assert.match(flowView, /drawSelectorDots\(this, displayedWidth,/,
     'GEAR selector renders the pending choice without changing piece widths');
   assert.doesNotMatch(adapter, /dreamcore-pad-hud|data-piece|data-target/);
