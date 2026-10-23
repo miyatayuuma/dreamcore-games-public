@@ -140,3 +140,26 @@ test('3D axes use deadzone, camera look, and release on lost input', () => {
   h.controller.connected = false;
   h.frame(1100); assert.equal(h.win.__dreamcoreAdventurePad.active, false);
 });
+
+test('radial adventure speed has fine, middle and 1.5x full-stick control', () => {
+  const h = setup('tanabata');
+  h.frame(1000);
+  h.controller.axes[0] = 0.24;
+  h.frame(1020);
+  const fine = h.win.__dreamcoreAdventurePad.x;
+  assert.ok(fine > 0.05 && fine < 0.25);
+  h.controller.axes[0] = 0.55;
+  h.frame(1040);
+  const middle = h.win.__dreamcoreAdventurePad.x;
+  assert.ok(middle > 0.65 && middle < 0.9);
+  h.controller.axes = [1, 1, 0, 0];
+  h.frame(1060);
+  const { x, y } = h.win.__dreamcoreAdventurePad;
+  assert.ok(Math.abs(Math.hypot(x, y) - 1.5) < 1e-9,
+    'diagonal movement must not exceed the controller-only 1.5x cap');
+  h.controller.axes = [0, 0, 0, 0];
+  h.frame(1080);
+  assert.equal(h.win.__dreamcoreAdventurePad.active, false);
+  assert.equal(h.win.__dreamcoreAdventurePad.x, 0);
+  assert.equal(h.win.__dreamcoreAdventurePad.y, 0);
+});
