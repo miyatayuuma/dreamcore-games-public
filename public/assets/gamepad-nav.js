@@ -1,376 +1,267 @@
-/* Windows GC201 / standard Gamepad API navigation and input relay.
- * Parent polls one controller and forwards game input through a versioned iframe contract.
+/* Virtual tap cursor for standard Gamepad API controllers.
+ * One shared controller, one on-screen pointer. The launcher owns input;
+ * games keep their existing pointer/touch UI and are not given control menus.
  */
 (() => {
   'use strict';
   if (!('getGamepads' in navigator)) return;
   const home = !!document.querySelector('#games-grid');
-  const shell = !!document.querySelector('#game-frame');
-  if (!home && !shell) return;
+  const frame = document.querySelector('#game-frame');
+  if (!home && !frame) return;
 
-  const LAST_SELECTION = 'dreamcore-gamepad-selection';
-  const TARGET_ORIGIN = location.origin;
-  const DEADZONE = 0.18;
-  const HOLD_MS = 650;
-  const GAMEPAD_MESSAGE = 'dreamcore:gamepad-v2';
-  const NAMES = [
-    'south', 'east', 'west', 'north', 'lb', 'rb', 'lt', 'rt',
-    'select', 'start', 'left-stick', 'right-stick',
-    'dpad-up', 'dpad-down', 'dpad-left', 'dpad-right', 'home'
-  ];
-  const GAME_BUTTONS = NAMES.map((_, i) => i).filter(i => i !== 8 && i !== 9);
+  const DEADZONE = 0.19;
+  const SPEED = 960;          // CSS pixels per second at full stick travel.
+  const DPAD_SPEED = 480;
+  const SCROLL_SPEED = 820;
+  const MAX_FRAME_MS = 50;
+  const TAP_TOLERANCE = 9;
+  const TYPE = 'dreamcore:gamepad-v2';
+  const cursor = document.createElement('div');
+  cursor.id = 'dreamcore-gamepad-cursor';
+  cursor.setAttribute('aria-hidden', 'true');
+  document.body.append(cursor);
 
-  const badge = document.createElement('span');
-  badge.id = 'gamepad-status';
-  badge.className = 'gamepad-status';
-  badge.hidden = true;
-  badge.setAttribute('role', 'status');
-  badge.setAttribute('aria-live', 'polite');
-  (document.querySelector('.header-actions') || document.querySelector('#game-nav'))?.append(badge);
-
-  const systemDialog = document.createElement('dialog');
-  systemDialog.id = 'gamepad-system-dialog';
-  systemDialog.className = 'gamepad-system-dialog';
-  systemDialog.setAttribute('aria-labelledby', 'gamepad-system-title');
-  systemDialog.innerHTML =
-    '<div class="gamepad-system-panel">' +
-    '<h2 id="gamepad-system-title">コントローラーメニュー</h2>' +
-    '<p>Aで決定・Bで戻る</p>' +
-    '<div class="gamepad-system-actions">' +
-    '<button type="button" data-gamepad-system="resume">ゲームにもどる</button>' +
-    '<button type="button" data-gamepad-system="audio">おとのせってい</button>' +
-    (shell ? '<button type="button" data-gamepad-system="home">トップページへ</button>' : '') +
-    '</div></div>';
-  if (home) systemDialog.querySelector('[data-gamepad-system="resume"]').textContent = 'メニューをとじる';
-  document.body.append(systemDialog);
+  const warning = document.createElement('span');
+  warning.id = 'gamepad-status';
+  warning.className = 'gamepad-status';
+  warning.hidden = true;
+  warning.setAttribute('role', 'status');
+  (document.querySelector('.header-actions') || document.querySelector('#game-nav'))?.append(warning);
 
   let signature = '';
   let armed = false;
-  let previous = [];
-  let holdStart = [];
-  let holdEmitted = [];
-  let selected = null;
-  let direction = '';
-  let nextMoveAt = 0;
-  let priorAxes = '';
-  let modalWasOpen = false;
-  let inputMode = 'gamepad';
+  let lastButtons = [];
+  let lastTime = 0;
+  let x = 0, y = 0, positioned = false;
+  let holding = null;
+  let controllerVisible = false;
 
-  function setBadge(label, warning = false) {
-    badge.hidden = !label;
-    badge.textContent = label;
-    badge.classList.toggle('is-warning', warning);
-  }
   function getPad() {
     try {
-      const pads = Array.from(navigator.getGamepads() || []).filter(p => p && p.connected);
+      const pads = Array.from(navigator.getGamepads() || []).filter(p => p?.connected);
       return pads.find(p => p.mapping === 'standard') || pads[0] || null;
     } catch {
       return null;
     }
   }
   function pressedButtons(pad) {
-    return Array.from(pad.buttons || [], b => !!(b.pressed || b.value > 0.5));
+    return Array.from(pad.buttons || [], b => !!(b?.pressed || b?.value > 0.5));
   }
-  function normalizePair(x, y) {
-    const size = Math.hypot(x, y);
-    if (size < DEADZONE) return [0, 0];
-    const gain = Math.pow(Math.min(1, (size - DEADZONE) / (1 - DEADZONE)), 1.18) / size;
-    return [x * gain, y * gain].map(v => Math.round(v * 50) / 50);
+  function stick(value) {
+    const n = Number.isFinite(value) ? Math.max(-1, Math.min(1, value)) : 0;
+    return Math.abs(n) < DEADZONE ? 0 : Math.sign(n) * Math.pow((Math.abs(n) - DEADZONE) / (1 - DEADZONE), 1.25);
   }
-  function normalizedAxes(pad) {
-    const a = pad.axes || [];
-    return [
-      ...normalizePair(a[0] || 0, a[1] || 0),
-      ...normalizePair(a[2] || 0, a[3] || 0)
-    ];
+  function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
   }
-  function stickDirection(buttons, axes) {
-    if (buttons[14] || axes[0] < -0.62) return 'left';
-    if (buttons[15] || axes[0] > 0.62) return 'right';
-    if (buttons[12] || axes[1] < -0.62) return 'up';
-    if (buttons[13] || axes[1] > 0.62) return 'down';
-    return '';
+  function initialPosition() {
+    const bounds = frame && !frame.hidden ? frame.getBoundingClientRect() : null;
+    x = window.innerWidth / 2;
+    y = bounds ? bounds.top + bounds.height / 2 : window.innerHeight / 2;
+    positioned = true;
   }
-  function audioDialog() {
-    const dialog = document.querySelector('#audio-settings-dialog');
-    return dialog?.open ? dialog : null;
+  function paint() {
+    cursor.style.transform = 'translate3d(' + Math.round(x) + 'px,' + Math.round(y) + 'px,0)';
+    cursor.classList.toggle('is-visible', controllerVisible);
+    cursor.classList.toggle('is-pressed', !!holding);
   }
-  function activeDialog() {
-    return audioDialog() || (systemDialog.open ? systemDialog : null);
-  }
-  function dialogControls() {
-    return Array.from(activeDialog()?.querySelectorAll('button, input') || [])
-      .filter(el => !el.disabled && el.getClientRects().length > 0);
-  }
-  function cards() {
-    return Array.from(document.querySelectorAll('#games-grid a.game-card, #works-grid a.work-card'))
-      .filter(el => el.getClientRects().length > 0);
-  }
-  function choose(element) {
-    if (!element) return;
-    selected?.classList.remove('gamepad-selected');
-    selected = element;
-    selected.classList.add('gamepad-selected');
-    selected.focus({ preventScroll: true });
-    selected.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
-    if (home && element.matches('a.game-card, a.work-card')) {
-      sessionStorage.setItem(LAST_SELECTION, element.getAttribute('href') || '');
-    }
-  }
-  function initialCard() {
-    const items = cards();
-    const remembered = sessionStorage.getItem(LAST_SELECTION);
-    return items.find(el => el.getAttribute('href') === remembered) || items[0] || null;
-  }
-  function ensureSelection() {
-    if (!home || activeDialog() || inputMode !== 'gamepad') return;
-    if (!cards().includes(selected)) choose(initialCard());
-  }
-  function adjustRange(element, amount) {
-    if (!(element instanceof HTMLInputElement) || element.type !== 'range') return false;
-    if (amount > 0) element.stepUp();
-    else element.stepDown();
-    element.dispatchEvent(new Event('input', { bubbles: true }));
-    element.dispatchEvent(new Event('change', { bubbles: true }));
-    return true;
-  }
-  function moveInDialog(dir) {
-    const items = dialogControls();
-    if (!items.length) return;
-    const current = items.includes(document.activeElement) ? document.activeElement : items[0];
-    if ((dir === 'left' || dir === 'right') && adjustRange(current, dir === 'right' ? 1 : -1)) return;
-    if (dir === 'left' || dir === 'right') return;
-    const pos = items.indexOf(current);
-    choose(items[(pos + (dir === 'down' ? 1 : -1) + items.length) % items.length]);
-  }
-  function moveInGrid(dir) {
-    ensureSelection();
-    const items = cards();
-    if (!items.length) return;
-    const current = items.includes(selected) ? selected : items[0];
-    const a = current.getBoundingClientRect();
-    const cx = a.left + a.width / 2;
-    const cy = a.top + a.height / 2;
-    let best = null, bestScore = Infinity;
-    for (const el of items) {
-      if (el === current) continue;
-      const b = el.getBoundingClientRect();
-      const dx = b.left + b.width / 2 - cx;
-      const dy = b.top + b.height / 2 - cy;
-      const parallel = dir === 'right' ? dx : dir === 'left' ? -dx : dir === 'down' ? dy : -dy;
-      if (parallel < 8) continue;
-      const across = dir === 'left' || dir === 'right' ? Math.abs(dy) : Math.abs(dx);
-      const score = parallel + across * 2.6;
-      if (score < bestScore) { best = el; bestScore = score; }
-    }
-    if (best) choose(best);
-  }
-  function emit(detail) {
-    const frame = document.querySelector('#game-frame');
-    if (!frame || frame.hidden || !frame.contentWindow) return;
-    frame.contentWindow.postMessage(Object.assign({ type: GAMEPAD_MESSAGE }, detail), TARGET_ORIGIN);
-  }
-  function releaseGameInput() {
-    if (!shell) return;
-    emit({ action: 'release-all' });
-    emit({ action: 'axes', axes: [0, 0, 0, 0] });
-    priorAxes = '0,0,0,0';
-  }
-  function resetToNeutral() {
-    armed = false;
-    const pad = getPad();
-    previous = pad ? pressedButtons(pad) : [];
-    holdStart = [];
-    holdEmitted = [];
-    direction = '';
-    nextMoveAt = 0;
-  }
-  function goHome() {
-    if (shell) {
-      releaseGameInput();
-      location.assign('./');
-    }
-  }
-  function openAudio() {
-    releaseGameInput();
-    resetToNeutral();
-    document.querySelector('#audio-settings-open')?.click();
-    if (audioDialog() && inputMode === 'gamepad') choose(dialogControls()[0]);
-  }
-  function toggleSystemMenu() {
-    if (audioDialog()) {
-      audioDialog().close();
-      return;
-    }
-    if (systemDialog.open) {
-      systemDialog.close();
-      return;
-    }
-    releaseGameInput();
-    resetToNeutral();
-    systemDialog.showModal();
-    if (inputMode === 'gamepad') choose(dialogControls()[0]);
-  }
-  function activate() {
-    const dialog = activeDialog();
-    if (dialog) {
-      const items = dialogControls();
-      const element = items.includes(document.activeElement) ? document.activeElement : items[0];
-      if (element?.matches('button, input[type="checkbox"]')) element.click();
-      return;
-    }
-    if (home) {
-      ensureSelection();
-      if (selected?.matches('a.game-card, a.work-card')) selected.click();
-    }
-  }
-  function relayGameInput(buttons, axes, time) {
-    for (const index of GAME_BUTTONS) {
-      if (buttons[index] && !previous[index]) {
-        holdStart[index] = time;
-        holdEmitted[index] = false;
-        emit({ action: 'button', phase: 'down', button: index, name: NAMES[index] });
-      } else if (!buttons[index] && previous[index]) {
-        emit({ action: 'button', phase: 'up', button: index, name: NAMES[index] });
-        holdStart[index] = 0;
-        holdEmitted[index] = false;
-      } else if (buttons[index] && !holdEmitted[index] && Number.isFinite(holdStart[index]) &&
-                 time - holdStart[index] >= HOLD_MS) {
-        holdEmitted[index] = true;
-        emit({ action: 'button', phase: 'hold', button: index, name: NAMES[index] });
+  function recordAt(clientX, clientY) {
+    if (frame && !frame.hidden) {
+      const rect = frame.getBoundingClientRect();
+      if (clientX >= rect.left && clientX < rect.right &&
+          clientY >= rect.top && clientY < rect.bottom) {
+        try {
+          const inner = frame.contentWindow;
+          const doc = inner?.document;
+          const px = clientX - rect.left, py = clientY - rect.top;
+          const element = doc?.elementFromPoint(px, py);
+          if (element) return { element, win: inner, x: px, y: py };
+        } catch {
+          // An independently hosted/cross-origin game cannot be sent DOM events.
+          return null;
+        }
       }
     }
-    const key = axes.join(',');
-    if (key !== priorAxes) {
-      priorAxes = key;
-      emit({ action: 'axes', axes });
+    const element = document.elementFromPoint(clientX, clientY);
+    return element ? { element, win: window, x: clientX, y: clientY } : null;
+  }
+  function dispatch(record, phase, buttons) {
+    if (!record?.element?.isConnected) return;
+    const { element, win, x: clientX, y: clientY } = record;
+    const init = {
+      bubbles: true, cancelable: true, composed: true, button: 0, buttons,
+      clientX, clientY, pointerId: 41, pointerType: 'mouse', isPrimary: true
+    };
+    if (typeof win.PointerEvent === 'function') {
+      element.dispatchEvent(new win.PointerEvent('pointer' + phase, init));
+    }
+    const mouse = { down: 'mousedown', move: 'mousemove', up: 'mouseup' }[phase];
+    if (mouse && typeof win.MouseEvent === 'function') {
+      element.dispatchEvent(new win.MouseEvent(mouse, init));
     }
   }
-  function sample(time) {
+  function finishHold(cancel = false) {
+    if (!holding) return;
+    let end = recordAt(x, y);
+    if (end?.win !== holding.start.win) {
+      // Release against the original game even after crossing the iframe edge.
+      const rect = frame?.getBoundingClientRect();
+      end = {
+        element: holding.start.element,
+        win: holding.start.win,
+        x: rect ? clamp(x - rect.left, 0, rect.width) : x,
+        y: rect ? clamp(y - rect.top, 0, rect.height) : y
+      };
+    }
+    if (cancel) {
+      if (holding.start.element.isConnected && typeof holding.start.win.PointerEvent === 'function') {
+        holding.start.element.dispatchEvent(new holding.start.win.PointerEvent('pointercancel', {
+          bubbles: true, pointerId: 41, pointerType: 'mouse', isPrimary: true
+        }));
+      }
+      // Many canvas games only clean up their drag on pointerup, not pointercancel.
+      // Release outside the playable area, avoiding an accidental drop/action.
+      dispatch({ ...holding.start, x: -1, y: -1 }, 'up', 0);
+    } else {
+      dispatch(end || holding.start, 'up', 0);
+      const distance = Math.hypot(x - holding.x, y - holding.y);
+      if (distance <= TAP_TOLERANCE && holding.start.element.isConnected &&
+          typeof holding.start.element.click === 'function') {
+        holding.start.element.click();
+      }
+    }
+    holding = null;
+    paint();
+  }
+  function release() {
+    finishHold(true);
+    armed = false;
+    lastButtons = [];
+    controllerVisible = false;
+    paint();
+    if (frame?.contentWindow && !frame.hidden) {
+      frame.contentWindow.postMessage({ type: TYPE, action: 'release-all' }, location.origin);
+    }
+  }
+  function activateCursor() {
+    if (!positioned) initialPosition();
+    controllerVisible = true;
+    paint();
+  }
+  function tapDown() {
+    if (holding) return;
+    activateCursor();
+    const start = recordAt(x, y);
+    if (!start) return;
+    holding = { start, x, y };
+    dispatch(start, 'down', 1);
+    paint();
+  }
+  function moveCursor(pad, buttons, dt) {
+    const axes = pad.axes || [];
+    let vx = stick(axes[0]), vy = stick(axes[1]);
+    if (buttons[14]) vx = -1;
+    if (buttons[15]) vx = 1;
+    if (buttons[12]) vy = -1;
+    if (buttons[13]) vy = 1;
+    const speed = (buttons[12] || buttons[13] || buttons[14] || buttons[15]) ? DPAD_SPEED : SPEED;
+    const dx = vx * speed * dt, dy = vy * speed * dt;
+    if (dx || dy) {
+      x = clamp(x + dx, 0, Math.max(0, window.innerWidth - 1));
+      y = clamp(y + dy, 0, Math.max(0, window.innerHeight - 1));
+      activateCursor();
+      if (holding) dispatch(recordAt(x, y) || holding.start, 'move', 1);
+      paint();
+    }
+    const wheel = stick(axes[3]);
+    if (wheel) {
+      let target = window;
+      if (frame && !frame.hidden && y >= frame.getBoundingClientRect().top) {
+        try { target = frame.contentWindow || window; } catch { target = window; }
+      }
+      target.scrollBy?.(0, wheel * SCROLL_SPEED * dt);
+      activateCursor();
+    }
+    if (home && vy && !holding) {
+      const edge = 42;
+      if ((y > window.innerHeight - edge && vy > 0) || (y < edge && vy < 0)) {
+        window.scrollBy?.(0, vy * SCROLL_SPEED * dt);
+      }
+    }
+  }
+  function sample(now) {
     if (document.hidden) return;
     const pad = getPad();
     const nextSignature = pad ? String(pad.index) + ':' + pad.id + ':' + pad.mapping : '';
-    if (nextSignature !== signature) {
-      if (signature) releaseGameInput();
+    if (signature !== nextSignature) {
+      release();
       signature = nextSignature;
-      resetToNeutral();
-      priorAxes = '';
-      if (!pad) {
-        setBadge('');
-        selected?.classList.remove('gamepad-selected');
-        selected = null;
-      } else if (pad.mapping !== 'standard') {
-        setBadge('🎮 XInputモードで接続してください', true);
+      positioned = false;
+      if (pad && pad.mapping !== 'standard') {
+        warning.hidden = false;
+        warning.textContent = 'XInputモードで接続してください';
+        warning.classList.add('is-warning');
       } else {
-        setBadge(shell ? '🎮 SELECT: ホーム / START: メニュー' : '🎮 コントローラー接続中');
+        warning.hidden = true;
+        warning.textContent = '';
+        warning.classList.remove('is-warning');
       }
     }
+    const dt = clamp(lastTime ? (now - lastTime) / 1000 : 0, 0, MAX_FRAME_MS / 1000);
+    lastTime = now;
+    if (!pad || pad.mapping !== 'standard') return;
 
-    const dialog = activeDialog();
-    const isModal = !!dialog;
-    if (isModal && !modalWasOpen) {
-      releaseGameInput();
-      resetToNeutral();
-    } else if (!isModal && modalWasOpen) {
-      releaseGameInput();
-      resetToNeutral();
-    }
-    modalWasOpen = isModal;
-
-    if (pad && pad.mapping === 'standard') {
-      const buttons = pressedButtons(pad);
-      const axes = normalizedAxes(pad);
-      const dir = stickDirection(buttons, axes);
-      if (!armed) {
-        if (!dir && !buttons.some(Boolean) && axes.every(v => v === 0)) {
-          armed = true;
-          if (home) ensureSelection();
-        }
-      } else {
-        const justPressed = i => buttons[i] && !previous[i];
-        if (dir || buttons.some(Boolean)) inputMode = 'gamepad';
-        if (shell && justPressed(8) && !isModal) {
-          goHome();
-          resetToNeutral();
-        } else if (justPressed(9)) {
-          toggleSystemMenu();
-        } else if (isModal || home) {
-          if (home && !isModal) ensureSelection();
-          if (dir) {
-            if (dir !== direction || time >= nextMoveAt) {
-              if (isModal) moveInDialog(dir);
-              else moveInGrid(dir);
-              nextMoveAt = time + (dir !== direction ? 290 : 135);
-            }
-          } else nextMoveAt = 0;
-          direction = dir;
-          if (justPressed(0)) activate();
-          if (isModal && justPressed(1)) dialog.close();
-        } else if (shell) {
-          relayGameInput(buttons, axes, time);
-        }
+    const buttons = pressedButtons(pad);
+    const axes = pad.axes || [];
+    const neutral = !buttons.some(Boolean) &&
+      [0, 1, 2, 3].every(i => Math.abs(axes[i] || 0) < DEADZONE);
+    if (!armed) {
+      if (neutral) {
+        armed = true;
+        activateCursor();
       }
-      previous = buttons;
+      lastButtons = buttons;
+      return;
     }
+    const pressed = index => buttons[index] && !lastButtons[index];
+    const released = index => !buttons[index] && lastButtons[index];
+    moveCursor(pad, buttons, dt);
+    if (pressed(0)) tapDown();
+    if (released(0)) finishHold();
+    if (pressed(1)) finishHold(true);
+    if (frame && pressed(8)) {
+      release();
+      location.assign('./');
+      return;
+    }
+    lastButtons = buttons;
   }
 
-  systemDialog.addEventListener('click', event => {
-    const button = event.target.closest('button[data-gamepad-system]');
-    if (!button) return;
-    const action = button.dataset.gamepadSystem;
-    if (action === 'home') goHome();
-    if (action === 'resume') systemDialog.close();
-    if (action === 'audio') {
-      systemDialog.close();
-      openAudio();
+  window.addEventListener('pointerdown', event => {
+    if (event.isTrusted) {
+      finishHold(true);
+      controllerVisible = false;
+      paint();
     }
-  });
-  for (const dialog of [systemDialog]) {
-    dialog.addEventListener('close', () => {
-      releaseGameInput();
-      resetToNeutral();
-    });
-  }
-  window.addEventListener('pointerdown', () => {
-    inputMode = 'pointer';
-    selected?.classList.remove('gamepad-selected');
-    selected = null;
-    releaseGameInput();
-    resetToNeutral();
   }, { capture: true });
-  window.addEventListener('keydown', () => {
-    inputMode = 'keyboard';
-    selected?.classList.remove('gamepad-selected');
-    selected = null;
-    releaseGameInput();
-    resetToNeutral();
+  window.addEventListener('keydown', event => {
+    if (event.isTrusted) {
+      finishHold(true);
+      controllerVisible = false;
+      paint();
+    }
   }, { capture: true });
   window.addEventListener('gamepaddisconnected', () => {
-    releaseGameInput();
+    release();
     signature = '';
-    resetToNeutral();
-    setBadge('');
-    selected?.classList.remove('gamepad-selected');
-    selected = null;
+    warning.hidden = true;
   });
-  const frame = document.querySelector('#game-frame');
   frame?.addEventListener('load', () => {
-    releaseGameInput();
-    resetToNeutral();
+    finishHold(true);
+    positioned = false;
+    if (controllerVisible) { initialPosition(); paint(); }
   });
-  for (const name of ['blur', 'pagehide']) {
-    window.addEventListener(name, () => {
-      releaseGameInput();
-      resetToNeutral();
-    });
-  }
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) {
-      releaseGameInput();
-      resetToNeutral();
-    }
-  });
-  // Poll input independently of rendering: a heavy WebGL child may throttle the shell RAF.
+  for (const name of ['blur', 'pagehide']) window.addEventListener(name, release);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) release(); });
   setInterval(() => sample(performance.now()), 16);
 })();
