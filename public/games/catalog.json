@@ -22,6 +22,28 @@
       "status": "ready",
       "path": "games/factor-raid/",
       "cover": "covers/factor-raid.svg"
+    },
+    {
+      "id": "tap-challenge",
+      "title": "モンスターラッシュ",
+      "description": "30秒でモンスターを集めて、どこまで進化させられる？",
+      "category": "アクション",
+      "emoji": "👆",
+      "accent": "yellow",
+      "status": "ready",
+      "path": "games/tap-challenge/",
+      "cover": "covers/tap-challenge.svg"
+    },
+    {
+      "id": "charge-crash",
+      "title": "チャージ＆クラッシュ",
+      "description": "力をためて、相手と真剣勝負！ 勝つのはどっちだ？",
+      "category": "たいせん",
+      "emoji": "⚡",
+      "accent": "blue",
+      "status": "ready",
+      "path": "games/charge-crash/",
+      "cover": "covers/charge-crash.svg"
     }
   ],
   "works": []

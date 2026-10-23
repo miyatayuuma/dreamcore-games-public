@@ -1,6 +1,7 @@
-name: Public math games checks
+name: Public game checks
 on:
   push:
+    branches: [main]
   pull_request:
 permissions:
   contents: read
@@ -14,6 +15,7 @@ jobs:
         with:
           node-version: '22'
       - run: node scripts/verify-number-games.mjs
+      - run: node scripts/verify-public-games.mjs
       - run: node --test tests/core-break/*.test.mjs
       - run: node --check public/assets/app.js
       - run: node --check public/assets/audio-settings.js
