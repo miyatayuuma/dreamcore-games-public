@@ -53,6 +53,8 @@ function navigationHarness(mode) {
     document: { elementFromPoint: () => target },
     PointerEvent: SyntheticEvent, MouseEvent: SyntheticEvent,
     postMessage: (message, origin) => calls.push({ message, origin }),
+    __dreamcoreGamepadCaptureA: () => false,
+    __dreamcoreGamepadCursorMode: () => 'on',
     scrollBy() {}
   };
   frame.contentWindow = child;
@@ -91,7 +93,7 @@ function navigationHarness(mode) {
   const step = () => { now += 33; tick(); };
   const press = index => { pad.buttons[index].pressed = true; pad.buttons[index].value = 1; };
   const release = index => { pad.buttons[index].pressed = false; pad.buttons[index].value = 0; };
-  return { step, press, release, pad, cards, target, frame, calls, handlers,
+  return { step, press, release, pad, cards, target, frame, child, calls, handlers,
     get currentX() { return currentX; },
     get assigned() { return assigned; } };
 }
@@ -156,24 +158,59 @@ test('shell A produces pointer tap, dragging holds pointer, Select returns home'
   assert.equal(h.assigned, './');
   assert.ok(h.calls.every(c => c.origin === 'https://game.test'));
   assert.ok(h.calls.some(c => c.message.action === 'release-all'));
+  assert.ok(h.calls.some(c => c.message.action === 'button' && c.message.button === 0));
+});
+
+test('a dragged pointer remains captured by its original canvas even over another element', () => {
+  const h = navigationHarness('shell');
+  const overlay = fakeElement('button');
+  h.step();
+  h.press(0); h.step();
+  h.child.document.elementFromPoint = () => overlay;
+  h.pad.axes[0] = 1;
+  for (let i = 0; i < 5; i++) h.step();
+  h.release(0); h.step();
+  assert.ok(h.target.events.includes('pointermove'));
+  assert.ok(h.target.events.includes('pointerup'));
+  assert.equal(overlay.events.length, 0, 'other controls cannot steal an active drag');
+  assert.equal(h.target.clicks || 0, 0, 'drag must not click its origin');
+});
+
+test('the shell relays L/R/X/ZR and does not create a pointer for a button-only game state', () => {
+  const h = navigationHarness('shell');
+  h.child.__dreamcoreGamepadCaptureA = () => true;
+  h.child.__dreamcoreGamepadCursorMode = () => 'off';
+  h.step();
+  for (const button of [4, 5, 2, 7, 0]) {
+    h.press(button); h.step(); h.release(button); h.step();
+  }
+  assert.equal(h.target.events.length, 0, 'captured A never fires pointer events');
+  for (const button of [4, 5, 2, 7, 0]) {
+    assert.equal(h.calls.filter(c => c.message.action === 'button' &&
+      c.message.button === button && c.message.phase === 'down').length, 1);
+    assert.equal(h.calls.filter(c => c.message.action === 'button' &&
+      c.message.button === button && c.message.phase === 'up').length, 1);
+  }
 });
 
 test('math adapter rejects foreign messages and accepts same-origin parent input', () => {
   const handlers = new Map(), parent = {};
-  const button = fakeElement('button'), overlay = fakeElement();
-  overlay.hidden = true;
-  const nodes = {
-    '#overlay': overlay, '#keyboard-controls button': button
-  };
+  const actions = [];
   const document = {
     hidden: false,
     head: fakeElement(), body: fakeElement(),
     createElement: fakeElement,
-    querySelector: selector => nodes[selector] || null,
-    querySelectorAll: selector => selector === '#keyboard-controls button' ? [button] : [],
+    querySelector: () => null,
+    querySelectorAll: () => [],
     addEventListener: (name, fn) => handlers.set('document:' + name, fn)
   };
-  const window = { parent, addEventListener: (name, fn) => handlers.set(name, fn) };
+  const window = { parent,
+    __coreBreakGamepad: {
+      button: (...args) => actions.push(args),
+      release: () => actions.push(['release'])
+    },
+    addEventListener: (name, fn) => handlers.set(name, fn)
+  };
   runInNewContext(adapter, {
     window, document, location: {
       pathname: '/games/core-break/index.html', origin: 'https://game.test'
@@ -188,11 +225,12 @@ test('math adapter rejects foreign messages and accepts same-origin parent input
   assert.ok(receive);
   receive({ source: {}, origin: 'https://game.test', data: message });
   receive({ source: parent, origin: 'https://foreign.test', data: message });
-  assert.equal(button.clicks || 0, 0);
+  assert.equal(actions.length, 0);
   receive({ source: parent, origin: 'https://game.test', data: message });
-  assert.equal(button.clicks, 1);
+  assert.deepEqual(actions[0], [0, 'down']);
   receive({ source: parent, origin: 'https://game.test',
     data: { type: 'dreamcore:gamepad-v2', action: 'release-all' } });
+  assert.deepEqual(actions[1], ['release']);
 });
 
 
@@ -202,17 +240,20 @@ test('FACTOR RAID page loads the public math controller adapter once', () => {
   assert.match(html, /src="game\.js\?/);
 });
 
-test('FACTOR RAID adapter turns A into a pointer drop on the arena', () => {
+test('FACTOR RAID L/R selects a card, X selects PRIME, and only ZR attacks', () => {
   const handlers = new Map(), parent = {}, events = [];
-  const card = fakeElement('div', 10), arena = fakeElement('div', 280);
-  card.dataset.v = '2';
-  card.dispatchEvent = event => { events.push({ target: 'card', type: event.type }); return true; };
-  arena.dispatchEvent = event => { events.push({ target: 'arena', type: event.type }); return true; };
+  const cards = Array.from({ length: 5 }, (_, i) => fakeElement('div', 10 + i * 20));
+  cards.forEach((card, i) => {
+    card.dataset.v = i < 4 ? String(i + 2) : 'PRIME';
+    card.dataset.p = i === 4 ? '1' : '0';
+    card.dispatchEvent = event => { events.push({ target: String(i), type: event.type }); return true; };
+  });
+  const arena = fakeElement('div', 280);
   const document = {
     hidden: false, head: fakeElement(), body: fakeElement(),
     createElement: fakeElement,
     querySelector: selector => selector === '#arena' ? arena : null,
-    querySelectorAll: selector => selector === '#dock .card' ? [card] : [],
+    querySelectorAll: selector => selector === '#dock .card' ? cards : [],
     addEventListener: (name, fn) => handlers.set('document:' + name, fn)
   };
   const window = {
@@ -230,11 +271,74 @@ test('FACTOR RAID adapter turns A into a pointer drop on the arena', () => {
     performance: { now: () => 1000 }, setInterval() {},
     Event: class {}, KeyboardEvent: class {}, PointerEvent: SyntheticPointer
   }, { timeout: 1000 });
-  handlers.get('message')({
+  const send = button => handlers.get('message')({
     source: parent, origin: 'https://game.test',
-    data: { type: 'dreamcore:gamepad-v2', action: 'button', phase: 'down', button: 0 }
+    data: { type: 'dreamcore:gamepad-v2', action: 'button', phase: 'down', button }
   });
+  send(5);
+  assert.equal(events.length, 0, 'selection must not auto-attack');
+  assert.equal(cards[1].classList.contains('dreamcore-pad-focus'), true);
+  send(2);
+  assert.equal(events.length, 0, 'X only selects PRIME');
+  assert.equal(cards[4].classList.contains('dreamcore-pad-focus'), true);
+  send(7);
   assert.deepEqual(events.map(x => [x.target, x.type]), [
-    ['card', 'pointerdown'], ['window', 'pointermove'], ['window', 'pointerup']
+    ['4', 'pointerdown'], ['window', 'pointermove'], ['window', 'pointerup']
   ]);
+});
+
+test('FACTOR RAID manual input keeps PRIME selection separate from backspace and ZR', () => {
+  const handlers = new Map(), parent = {}, events = [];
+  const digitPad = fakeElement('div'), readout = fakeElement('div', 10),
+    prime = fakeElement('div', 140), arena = fakeElement('div', 280);
+  const document = {
+    hidden: false, head: fakeElement(), body: fakeElement(),
+    createElement: fakeElement,
+    querySelector(selector) {
+      return { '#digitPad': digitPad, '#factorReadout': readout,
+        '#manualPrime': prime, '#arena': arena }[selector] || null;
+    },
+    querySelectorAll: () => [],
+    addEventListener: (name, fn) => handlers.set('document:' + name, fn),
+    dispatchEvent: event => events.push(['document', event.key])
+  };
+  const window = {
+    parent, addEventListener: (name, fn) => handlers.set(name, fn),
+    dispatchEvent: event => events.push(['window', event.type])
+  };
+  readout.dispatchEvent = e => { events.push(['factor', e.type]); return true; };
+  prime.dispatchEvent = e => { events.push(['prime', e.type]); return true; };
+  class SyntheticPointer {
+    constructor(type, init) { Object.assign(this, { type }, init); }
+  }
+  runInNewContext(adapter, { window, document,
+    location: { pathname: '/games/factor-raid/index.html', origin: 'https://game.test' },
+    getComputedStyle: () => ({ display: 'block', visibility: 'visible' }),
+    PointerEvent: SyntheticPointer, KeyboardEvent: SyntheticPointer
+  }, { timeout: 1000 });
+  const send = button => handlers.get('message')({
+    source: parent, origin: 'https://game.test',
+    data: { type: 'dreamcore:gamepad-v2', action: 'button', phase: 'down', button }
+  });
+  send(5); send(7);
+  assert.deepEqual(events.slice(0, 3), [
+    ['prime', 'pointerdown'], ['window', 'pointermove'], ['window', 'pointerup']
+  ]);
+  events.length = 0;
+  send(4); send(1); send(7);
+  assert.deepEqual(events.slice(0, 4), [
+    ['document', 'Backspace'], ['factor', 'pointerdown'],
+    ['window', 'pointermove'], ['window', 'pointerup']
+  ]);
+});
+
+test('CORE BREAK exposes rule-specific direct controller actions and no menu HUD', () => {
+  const game = read('public/games/core-break/src/game.mjs');
+  const flowView = read('public/games/core-break/src/flow-view.mjs');
+  assert.match(game, /__coreBreakGamepad = \{ button: padButton, release: clearPadState \}/);
+  assert.match(game, /padPackNext\(\)/);
+  assert.match(game, /pad\.gearCandidate !== null/);
+  assert.match(flowView, /drawSelectorDots\(this, displayedWidth,/,
+    'GEAR selector renders the pending choice without changing piece widths');
+  assert.doesNotMatch(adapter, /dreamcore-pad-hud|data-piece|data-target/);
 });
