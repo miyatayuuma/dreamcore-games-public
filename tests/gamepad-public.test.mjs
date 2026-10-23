@@ -124,8 +124,8 @@ test('D-pad moves a free cursor, A taps the element under the cursor', () => {
   h.press(14);
   for (let i = 0; i < 15; i++) h.step();
   h.release(14); h.step();
-  assert.ok(h.currentX < 250, 'cursor moved horizontally, not card-focus navigation');
   h.press(0); h.step();
+  assert.ok(h.currentX < 250, 'cursor moved horizontally, not card-focus navigation');
   assert.ok(h.cards[0].events.includes('pointerdown'));
   h.release(0); h.step();
   assert.ok(h.cards[0].events.includes('pointerup'));
