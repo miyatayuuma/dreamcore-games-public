@@ -285,20 +285,16 @@
     lastButtons = buttons;
   }
 
-  window.addEventListener('pointerdown', event => {
+  function yieldToNativeInput(event) {
     if (event.isTrusted) {
       finishHold(true);
       controllerVisible = false;
       paint();
     }
-  }, { capture: true });
-  window.addEventListener('keydown', event => {
-    if (event.isTrusted) {
-      finishHold(true);
-      controllerVisible = false;
-      paint();
-    }
-  }, { capture: true });
+  }
+  for (const name of ['pointerdown', 'keydown']) {
+    window.addEventListener(name, yieldToNativeInput, { capture: true });
+  }
   window.addEventListener('gamepaddisconnected', () => {
     release();
     signature = '';
@@ -306,6 +302,13 @@
   });
   frame?.addEventListener('load', () => {
     finishHold(true);
+    // Native events inside an iframe do not bubble to the launcher window.
+    // Observe the same-origin child too, so touch/mouse can take over a drag.
+    try {
+      for (const name of ['pointerdown', 'keydown']) {
+        frame.contentWindow?.addEventListener(name, yieldToNativeInput, { capture: true });
+      }
+    } catch { /* Cross-origin games cannot share pointer input. */ }
     positioned = false;
     if (controllerVisible) { initialPosition(); paint(); }
   });
