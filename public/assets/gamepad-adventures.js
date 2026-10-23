@@ -13,6 +13,8 @@
   const TYPE = 'dreamcore:gamepad-v2';
   const DEADZONE = 0.18;
   const MAX_DELTA = 0.05;
+  const MOVE_GAIN = 1.5;      // Controller-only: preserve touch movement speeds.
+  const MOVE_EXPONENT = 0.9;  // Smooth acceleration through the middle range.
   const padMove = { x: 0, y: 0, active: false };
   window.__dreamcoreAdventurePad = padMove;
   window.__dreamcoreGamepadCursorMode = () => 'off';
@@ -21,6 +23,8 @@
   let lastTime = 0;
   let lastLocalButtons = [];
   let localArmed = false;
+  let motionArmed = true;
+  let deviceSignature = '';
   let lastNarrationAt = -Infinity;
 
   function visible(id) {
@@ -87,6 +91,7 @@
     padMove.active = false;
     lastLocalButtons = [];
     localArmed = false;
+    motionArmed = false;
     lastTime = 0;
     lastNarrationAt = -Infinity;
   }
@@ -113,25 +118,45 @@
     return Math.abs(x) <= DEADZONE ? 0 :
       Math.sign(x) * Math.pow((Math.abs(x) - DEADZONE) / (1 - DEADZONE), 1.2);
   }
+  function moveAxes(rawX, rawY) {
+    const x = Number.isFinite(rawX) ? Math.max(-1, Math.min(1, rawX)) : 0;
+    const y = Number.isFinite(rawY) ? Math.max(-1, Math.min(1, rawY)) : 0;
+    const length = Math.hypot(x, y);
+    if (length <= DEADZONE) return { x: 0, y: 0 };
+    const amount = Math.pow((Math.min(1, length) - DEADZONE) / (1 - DEADZONE), MOVE_EXPONENT);
+    // Multiply the vector after radial normalization to cap diagonal speed.
+    return { x: x / length * amount * MOVE_GAIN, y: y / length * amount * MOVE_GAIN };
+  }
   function sample(now) {
     requestAnimationFrame(sample);
     if (document.hidden) { reset(); return; }
     const device = pad();
-    if (!device) { reset(); return; }
+    if (!device) { reset(); deviceSignature = ''; return; }
+    const signature = String(device.index) + ':' + device.id;
+    if (deviceSignature && signature !== deviceSignature) reset();
+    deviceSignature = signature;
 
     const dt = Math.min(MAX_DELTA, lastTime ? Math.max(0, (now - lastTime) / 1000) : 0);
     lastTime = now;
     const axes = device.axes || [];
-    let mx = axis(axes[0]), my = axis(axes[1]);
-    const len = Math.hypot(mx, my);
-    if (len > 1) { mx /= len; my /= len; }
+    const { x: mx, y: my } = moveAxes(axes[0], axes[1]);
+    const rx = axis(axes[2]), ry = axis(axes[3]);
+    const buttons = Array.from(device.buttons || [],
+      item => !!(item?.pressed || item?.value > 0.5));
+    // A release must survive subsequent local polls while a stick is held.
+    // Require neutral axes AND buttons before accepting motion again.
+    if (!motionArmed) {
+      if (!mx && !my && !rx && !ry && buttons.every(value => !value)) {
+        motionArmed = true;
+      }
+      return;
+    }
 
     const allowed = playEnabled();
     padMove.x = allowed ? mx : 0;
     padMove.y = allowed ? my : 0;
     padMove.active = allowed && Math.hypot(mx, my) > 0.001;
 
-    const rx = axis(axes[2]), ry = axis(axes[3]);
     if (allowed && dt && (rx || ry)) {
       window.__dreamcoreAdventureLook?.(rx, ry, dt);
     }
@@ -139,8 +164,6 @@
     // In a DreamCore iframe, the parent owns button edges.
     if (window.parent !== window) return;
 
-    const buttons = Array.from(device.buttons || [],
-      item => !!(item?.pressed || item?.value > 0.5));
     if (!localArmed) {
       if (buttons.every(value => !value)) localArmed = true;
     } else {

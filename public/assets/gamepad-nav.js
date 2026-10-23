@@ -10,7 +10,8 @@
   if (!home && !frame) return;
 
   const DEADZONE = 0.19;
-  const SPEED = 960;          // CSS pixels per second at full stick travel.
+  const SPEED = 1600;         // CSS pixels per second at full stick travel.
+  const CURSOR_EXPONENT = 0.9; // Faster middle travel, fine control near center.
   const DPAD_SPEED = 480;
   const SCROLL_SPEED = 820;
   const MAX_FRAME_MS = 50;
@@ -68,6 +69,15 @@
   function stick(value) {
     const n = Number.isFinite(value) ? Math.max(-1, Math.min(1, value)) : 0;
     return Math.abs(n) < DEADZONE ? 0 : Math.sign(n) * Math.pow((Math.abs(n) - DEADZONE) / (1 - DEADZONE), 1.25);
+  }
+  function cursorAxes(rawX, rawY) {
+    const x = Number.isFinite(rawX) ? clamp(rawX, -1, 1) : 0;
+    const y = Number.isFinite(rawY) ? clamp(rawY, -1, 1) : 0;
+    const length = Math.hypot(x, y);
+    if (length <= DEADZONE) return { x: 0, y: 0 };
+    // One radial curve avoids boosting diagonals above cardinal speed.
+    const speed = Math.pow((Math.min(1, length) - DEADZONE) / (1 - DEADZONE), CURSOR_EXPONENT);
+    return { x: x / length * speed, y: y / length * speed };
   }
   function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
@@ -183,12 +193,15 @@
   function moveCursor(pad, buttons, dt) {
     if (pointerDisabled()) { paint(); return; }
     const axes = pad.axes || [];
-    let vx = stick(axes[0]), vy = stick(axes[1]);
-    if (buttons[14]) vx = -1;
-    if (buttons[15]) vx = 1;
-    if (buttons[12]) vy = -1;
-    if (buttons[13]) vy = 1;
-    const speed = (buttons[12] || buttons[13] || buttons[14] || buttons[15]) ? DPAD_SPEED : SPEED;
+    let { x: vx, y: vy } = cursorAxes(axes[0], axes[1]);
+    const dpad = buttons[12] || buttons[13] || buttons[14] || buttons[15];
+    if (dpad) {
+      vx = Number(!!buttons[15]) - Number(!!buttons[14]);
+      vy = Number(!!buttons[13]) - Number(!!buttons[12]);
+      const length = Math.hypot(vx, vy);
+      if (length > 1) { vx /= length; vy /= length; }
+    }
+    const speed = dpad ? DPAD_SPEED : SPEED;
     const dx = vx * speed * dt, dy = vy * speed * dt;
     if (dx || dy) {
       x = clamp(x + dx, 0, Math.max(0, window.innerWidth - 1));
@@ -272,20 +285,16 @@
     lastButtons = buttons;
   }
 
-  window.addEventListener('pointerdown', event => {
+  function yieldToNativeInput(event) {
     if (event.isTrusted) {
       finishHold(true);
       controllerVisible = false;
       paint();
     }
-  }, { capture: true });
-  window.addEventListener('keydown', event => {
-    if (event.isTrusted) {
-      finishHold(true);
-      controllerVisible = false;
-      paint();
-    }
-  }, { capture: true });
+  }
+  for (const name of ['pointerdown', 'keydown']) {
+    window.addEventListener(name, yieldToNativeInput, { capture: true });
+  }
   window.addEventListener('gamepaddisconnected', () => {
     release();
     signature = '';
@@ -293,6 +302,13 @@
   });
   frame?.addEventListener('load', () => {
     finishHold(true);
+    // Native events inside an iframe do not bubble to the launcher window.
+    // Observe the same-origin child too, so touch/mouse can take over a drag.
+    try {
+      for (const name of ['pointerdown', 'keydown']) {
+        frame.contentWindow?.addEventListener(name, yieldToNativeInput, { capture: true });
+      }
+    } catch { /* Cross-origin games cannot share pointer input. */ }
     positioned = false;
     if (controllerVisible) { initialPosition(); paint(); }
   });

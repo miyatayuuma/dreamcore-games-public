@@ -51,6 +51,7 @@ function navigationHarness(mode) {
   frame.getBoundingClientRect = () =>
     ({ left: 0, top: 50, right: 800, bottom: 600, width: 800, height: 550 });
   const child = {
+    addEventListener: (name, fn) => handlers.set('child:' + name, fn),
     document: { elementFromPoint: () => target },
     PointerEvent: SyntheticEvent, MouseEvent: SyntheticEvent,
     postMessage: (message, origin) => calls.push({ message, origin }),
@@ -59,6 +60,7 @@ function navigationHarness(mode) {
     scrollBy() {}
   };
   frame.contentWindow = child;
+  frame.addEventListener = (name, fn) => handlers.set('frame:' + name, fn);
   const pad = {
     index: 0, id: 'mock XInput', mapping: 'standard', connected: true,
     buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })),
@@ -175,6 +177,26 @@ test('a dragged pointer remains captured by its original canvas even over anothe
   assert.ok(h.target.events.includes('pointerup'));
   assert.equal(overlay.events.length, 0, 'other controls cannot steal an active drag');
   assert.equal(h.target.clicks || 0, 0, 'drag must not click its origin');
+});
+
+test('trusted mouse/touch or keyboard inside the iframe cancels a controller drag', () => {
+  for (const type of ['pointerdown', 'keydown']) {
+    const h = navigationHarness('shell');
+    h.handlers.get('frame:load')();
+    h.step(); h.press(0); h.step();
+    const nativeInput = h.handlers.get('child:' + type);
+    assert.equal(typeof nativeInput, 'function', 'iframe input must be observed');
+    nativeInput({ isTrusted: false });
+    assert.equal(h.target.events.includes('pointercancel'), false,
+      'synthetic controller events must not cancel themselves');
+    nativeInput({ isTrusted: true });
+    assert.equal(h.target.events.includes('pointercancel'), true);
+    const moves = h.target.events.filter(e => e === 'pointermove').length;
+    h.pad.axes[0] = 1; h.step(); h.release(0); h.step();
+    assert.equal(h.target.events.filter(e => e === 'pointermove').length, moves,
+      'the cancelled hold must not resume while A remains held');
+    assert.equal(h.target.clicks || 0, 0);
+  }
 });
 
 test('the shell relays L/R/X/ZR and does not create a pointer for a button-only game state', () => {
@@ -344,4 +366,25 @@ test('CORE BREAK exposes rule-specific direct controller actions and no menu HUD
   assert.match(flowView, /drawSelectorDots\(this, displayedWidth,/,
     'GEAR selector renders the pending choice without changing piece widths');
   assert.doesNotMatch(adapter, /dreamcore-pad-hud|data-piece|data-target/);
+});
+
+test('launcher cursor responds quickly without diagonal overspeed or deadzone drift', () => {
+  const measuredX = (x, y = 0) => {
+    const h = navigationHarness('home');
+    h.step();
+    h.pad.axes[0] = x; h.pad.axes[1] = y;
+    for (let i = 0; i < 8; i++) h.step();
+    h.press(0); h.step(); // Pointer down samples the cursor position.
+    return h.currentX;
+  };
+  assert.ok(measuredX(0.18) === 400, 'inside deadzone remains stationary');
+  const fine = measuredX(0.25);
+  const middle = measuredX(0.55);
+  const full = measuredX(1);
+  assert.ok(fine > 410 && fine < 480, 'short travel retains precision');
+  assert.ok(middle > 580 && middle < 740, 'middle travel must be responsive');
+  assert.ok(full > 760, 'full travel crosses the screen quickly');
+  const diagonal = measuredX(1, 1);
+  assert.ok(diagonal < full && diagonal > 660,
+    'radial clamping prevents faster diagonal travel');
 });
